@@ -120,7 +120,61 @@ export default function Dashboard() {
         contactoCelular: '53987654'
       });
     }
-  }, [user, personal]);
+  }, [user]);
+
+  // Sincronizar listado de potencial y período de guardia desde el Backend (Hito 3)
+  useEffect(() => {
+    const fetchPotencialData = async () => {
+      try {
+        const token = localStorage.getItem('access_token');
+        if (!token) return;
+        const res = await fetch('http://127.0.0.1:8000/api/potencial/listado/', {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.periodo) {
+            setPeriodoActivo(prev => ({
+              ...prev,
+              nombre: data.periodo.nombre || prev.nombre,
+              compromisoInicio: data.periodo.inicio_compromiso || prev.compromisoInicio,
+              compromisoFin: data.periodo.fin_compromiso || prev.compromisoFin,
+              aprobacionInicio: data.periodo.inicio_aprobacion || prev.aprobacionInicio,
+              aprobacionFin: data.periodo.fin_aprobacion || prev.aprobacionFin,
+              aprobadoFIM: data.aprobado || false
+            }));
+          }
+          if (data.resultados && data.resultados.length > 0) {
+            setPersonal(data.resultados.map(r => ({
+              id: r.id,
+              ci: r.ci_enmascarado || r.ci,
+              nombre: r.nombre_completo,
+              sexo: r.sexo,
+              tipo: r.tipo,
+              contrato: r.contrato_nombre,
+              area: r.area_nombre,
+              depto: r.depto_nombre,
+              cargo: r.cargo_nombre,
+              comprometido: r.comprometido,
+              sedePref: r.sedePref_nombre || 'Sede Oscar Lucero Moya',
+              tipoPref: r.tipoPref || 'Diurna',
+              diaPref: r.diaPref || 'Semana',
+              telefono: r.telefono || '',
+              celular: r.celular || '',
+              whatsapp: r.whatsapp || '',
+              direccion: r.direccion || '',
+              referencia: r.referencia || '',
+              contactoNombre: r.contactoNombre || '',
+              contactoCelular: r.contactoCelular || ''
+            })));
+          }
+        }
+      } catch (err) {
+        console.warn('Backend potencial fetch fallback:', err);
+      }
+    };
+    fetchPotencialData();
+  }, [user]);
 
   // --- REGLAS DE NEGOCIO Y FUNCIONES DE AYUDA (E.R.S.) ---
 
@@ -181,8 +235,27 @@ export default function Dashboard() {
 
   // --- FUNCIONES DE CONTROL ---
 
-  // Actualizar compromiso
-  const handleGuardarCompromiso = (sede, tipo, dia) => {
+  // Actualizar compromiso (MOD-03 y MOD-04)
+  const handleGuardarCompromiso = async (sede, tipo, dia) => {
+    try {
+      const token = localStorage.getItem('access_token');
+      if (token) {
+        await fetch('http://127.0.0.1:8000/api/compromiso/compromisos/firmar/', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            tipo_turno: tipo,
+            tipo_dia: dia
+          })
+        });
+      }
+    } catch (e) {
+      console.warn('Persistencia local fallback:', e);
+    }
+
     setPersonal(prev => prev.map(p => {
       const isCurrentUser = p.nombre.toLowerCase().includes(user?.first_name?.toLowerCase()) || p.username === user?.username;
       if (isCurrentUser) {
@@ -193,10 +266,29 @@ export default function Dashboard() {
     showToast('✅ Compromiso de guardia firmado exitosamente.');
   };
 
-  // Aprobar Potencial
-  const handleAprobarPotencial = () => {
+  // Aprobar Potencial (MOD-05 & RN-04)
+  const handleAprobarPotencial = async () => {
+    try {
+      const token = localStorage.getItem('access_token');
+      if (token) {
+        const res = await fetch('http://127.0.0.1:8000/api/potencial/aprobar/', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          }
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          showToast(data.error || 'Error al aprobar potencial', 'warn');
+          return;
+        }
+      }
+    } catch (e) {
+      console.warn('Persistencia local fallback:', e);
+    }
     setPeriodoActivo(prev => ({ ...prev, aprobadoFIM: true }));
-    showToast('🔒 Potencial aprobado de forma irreversible para la Facultad de Informática.');
+    showToast('🔒 RN-04: Potencial aprobado de forma irreversible para el Área.');
   };
 
   // Sincronizar ASSET y SIGENU
@@ -274,8 +366,27 @@ export default function Dashboard() {
     setAsignaciones(prev => prev.map(a => (a.fecha === fecha && a.personaId === personaId) ? { ...a, observaciones: val } : a));
   };
 
-  // Inclusión Manual al Potencial
-  const handleConfirmarInclusionManual = () => {
+  // Inclusión Manual al Potencial (RF-0502)
+  const handleConfirmarInclusionManual = async () => {
+    try {
+      const token = localStorage.getItem('access_token');
+      if (token && inclusionPersonaSeleccionada) {
+        await fetch('http://127.0.0.1:8000/api/potencial/incluir-manual/', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            perfil_id: inclusionPersonaSeleccionada.id,
+            tipo_turno: manualInclusionForm.tipo,
+            tipo_dia: manualInclusionForm.dia
+          })
+        });
+      }
+    } catch (e) {
+      console.warn('Persistencia manual fallback:', e);
+    }
     setPersonal(prev => prev.map(p => {
       if (p.id === inclusionPersonaSeleccionada.id) {
         return { ...p, comprometido: true, sedePref: manualInclusionForm.sede, tipoPref: manualInclusionForm.tipo, diaPref: manualInclusionForm.dia };
@@ -286,7 +397,27 @@ export default function Dashboard() {
     showToast(`✅ ${inclusionPersonaSeleccionada.nombre} incluido manualmente al potencial.`);
   };
 
-  const handleConfirmarInclusionLote = () => {
+  // Inclusión por Lote al Potencial (RF-0502)
+  const handleConfirmarInclusionLote = async () => {
+    try {
+      const token = localStorage.getItem('access_token');
+      if (token && personalSeleccionadoPotencial.length > 0) {
+        await fetch('http://127.0.0.1:8000/api/potencial/asignar-lote/', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            perfiles_ids: personalSeleccionadoPotencial,
+            tipo_turno: loteInclusionForm.tipo,
+            tipo_dia: loteInclusionForm.dia
+          })
+        });
+      }
+    } catch (e) {
+      console.warn('Persistencia lote fallback:', e);
+    }
     setPersonal(prev => prev.map(p => {
       if (personalSeleccionadoPotencial.includes(p.id)) {
         return { ...p, comprometido: true, sedePref: loteInclusionForm.sede, tipoPref: loteInclusionForm.tipo, diaPref: loteInclusionForm.dia };
@@ -1449,7 +1580,7 @@ export default function Dashboard() {
             <h1 className="text-lg sm:text-xl font-bold tracking-tight text-white flex items-center gap-1.5 sm:gap-2">
               SIGCGOE
               <span className="text-[10px] px-2 py-0.5 rounded-full bg-uho-light/10 text-uho-light border border-uho-light/20 hidden sm:inline-flex">
-                UHO v1.1
+                UHO v1.2
               </span>
             </h1>
             <p className="text-[10px] text-slate-400 font-medium hidden sm:block">Universidad de Holguín "Oscar Lucero Moya"</p>

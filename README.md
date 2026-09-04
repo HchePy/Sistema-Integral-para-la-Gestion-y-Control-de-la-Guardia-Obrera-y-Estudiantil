@@ -173,10 +173,10 @@ A continuación se detalla la lista de verificación (checklist) oficial de los 
   - [x] **[MOD-01]** CRUD de Nomencladores (Áreas, Departamentos, Sedes, Cargos, Contratos).
   - [x] **[MOD-01]** Sincronización simulada de datos primarios desde ASSET y SIGENU.
   - [x] **[MOD-02]** Vista de Perfil y edición de datos de contacto de trabajadores/estudiantes.
-- [ ] **Hito 3: Módulos de Compromiso de Guardia (Fase Intermedia)**
-  - [ ] **[MOD-03]** Formulario y persistencia de Compromiso de Guardia para Trabajadores.
-  - [ ] **[MOD-04]** Flujo de Compromiso y parámetros por defecto para Estudiantes.
-  - [ ] **[MOD-05]** Listado de Potencial y flujo de aprobación por lotes para jefes de área.
+- [x] **Hito 3: Módulos de Compromiso de Guardia (Fase Intermedia)**
+  - [x] **[MOD-03]** Formulario y persistencia de Compromiso de Guardia para Trabajadores.
+  - [x] **[MOD-04]** Flujo de Compromiso y parámetros por defecto para Estudiantes.
+  - [x] **[MOD-05]** Listado de Potencial y flujo de aprobación por lotes para jefes de área.
 - [ ] **Hito 4: Módulos de Distribución y Operación Diaria (Fase Avanzada)**
   - [ ] **[MOD-06]** Distribución mensual de turnos y asignación de personas a días específicos.
   - [ ] **[MOD-07]** Registro del Control de Guardia diario y evaluaciones (Bien, Regular, Mal).

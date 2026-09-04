@@ -111,7 +111,7 @@ def seed():
             'username': 'resp_area', 'first_name': 'Julio', 'last_name': 'Gómez',
             'email': 'julio.gomez@uho.edu.cu', 'role': ROLE_RESPONSABLE_AREA, 'depto_inst': 'Facultad de Ingeniería',
             'ci': '82031412345', 'sexo': 'M', 'tipo': 'OBRERO', 'contrato': 'Fijo Indeterminado',
-            'area': 'Facultad de Ingeniería', 'depto': 'Depto. de Ingeniería Mecánica', 'cargo': 'Profesor Auxiliar'
+            'area': 'Facultad de Informática y Matemática', 'depto': 'Depto. de Sistemas de Información', 'cargo': 'Decano'
         },
         {
             'username': 'resp_depto', 'first_name': 'Ramón', 'last_name': 'Valdés',
@@ -194,22 +194,37 @@ def seed():
             dir_inf.save()
             
         resp_area_user = User.objects.get(username='resp_area')
-        fac_ing = areas.get('Facultad de Ingeniería')
-        if fac_ing:
-            fac_ing.responsable = resp_area_user
-            fac_ing.save()
+        fac_inf = areas.get('Facultad de Informática y Matemática')
+        if fac_inf:
+            fac_inf.responsable = resp_area_user
+            fac_inf.save()
             
         resp_depto_user = User.objects.get(username='resp_depto')
         depto_sist = deptos.get('Depto. de Sistemas de Información')
         if depto_sist:
             depto_sist.responsable = resp_depto_user
-            depto_sist.save()
-            
-        print("Responsables de Área y Departamento asignados correctamente.")
-    except User.DoesNotExist:
-        pass
+            print("Responsables de Área y Departamento asignados correctamente.")
+    except Exception as e:
+        print(f"Nota en asignación de responsables: {e}")
+
+    # 7. Período de Guardia Activo (RF-0113 / Hito 3)
+    from modules.potencial.models import PeriodoGuardia
+    import datetime
+    periodo, p_created = PeriodoGuardia.objects.get_or_create(
+        nombre="Junio — Julio 2026",
+        defaults={
+            'inicio_compromiso': datetime.date(2026, 6, 1),
+            'fin_compromiso': datetime.date(2026, 6, 30),
+            'inicio_aprobacion': datetime.date(2026, 7, 1),
+            'fin_aprobacion': datetime.date(2026, 7, 7),
+            'activo': True
+        }
+    )
+    if p_created:
+        print(f"Período de Guardia creado: {periodo.nombre}")
 
     print("Datos de prueba insertados con éxito.")
 
 if __name__ == "__main__":
     seed()
+

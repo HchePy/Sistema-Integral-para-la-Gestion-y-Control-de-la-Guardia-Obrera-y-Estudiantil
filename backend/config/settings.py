@@ -14,7 +14,7 @@ environ.Env.read_env(os.path.join(BASE_DIR, '.env'))
 # CONFIGURACIÓN DE SEGURIDAD
 SECRET_KEY = env('SECRET_KEY', default='django-insecure-uho-system-development-key-2026-v1')
 DEBUG = env.bool('DEBUG', default=True)
-ALLOWED_HOSTS = env.list('ALLOWED_HOSTS', default=['localhost', '127.0.0.1', '[::1]'])
+ALLOWED_HOSTS = env.list('ALLOWED_HOSTS', default=['localhost', '127.0.0.1', '[::1]', 'testserver'])
 
 # APLICACIONES INSTALADAS
 INSTALLED_APPS = [
@@ -157,7 +157,7 @@ SIMPLE_JWT = {
 SPECTACULAR_SETTINGS = {
     'TITLE': 'Sistema de Informatización UHO API',
     'DESCRIPTION': 'Documentación del Sistema de Desarrollo para el Proceso de Informatización de la Universidad de Holguín (UHO)',
-    'VERSION': '1.1.0',
+    'VERSION': '1.2.0',
     'SERVE_INCLUDE_SCHEMA': False,
 }
 

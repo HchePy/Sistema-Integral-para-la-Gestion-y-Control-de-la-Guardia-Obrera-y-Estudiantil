@@ -1,6 +1,11 @@
-from django.urls import path
-from .views import DashboardView
+from django.urls import path, include
+from rest_framework.routers import DefaultRouter
+from .views import CompromisoViewSet, DashboardView
+
+router = DefaultRouter()
+router.register(r'compromisos', CompromisoViewSet, basename='compromiso')
 
 urlpatterns = [
     path('dashboard/', DashboardView.as_view(), name='dashboard'),
+    path('', include(router.urls)),
 ]
