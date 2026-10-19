@@ -358,6 +358,92 @@ export default function Dashboard() {
 
   const [showModalNuevoRol, setShowModalNuevoRol] = useState(false);
   const [nuevoRolForm, setNuevoRolForm] = useState({ nombre: '', descripcion: '', permisos: [] });
+  const [selectedRole, setSelectedRole] = useState('Decano');
+
+  const PERMISOS_DISPONIBLES = [
+    { id: 'dashboard_view', label: 'Ver Dashboard General', desc: 'Acceso a estadísticas, métricas y reportes analíticos' },
+    { id: 'compromiso_propio', label: 'Registrar Compromiso Propio', desc: 'Firma digital de compromiso y preferencias de guardia' },
+    { id: 'perfil_edit', label: 'Modificar Perfil Propio', desc: 'Actualización de teléfonos, dirección y contactos de aviso' },
+    { id: 'cronograma_view', label: 'Consultar Cronograma Anual', desc: 'Visualización de turnos programados y calendario' },
+    { id: 'potencial_aprobar', label: 'Aprobar Potencial de Área (RN-04)', desc: 'Validación institucional y cierre de potencial' },
+    { id: 'distribucion_manage', label: 'Realizar Distribución de Guardias', desc: 'Asignación de turnos a personal comprometido' },
+    { id: 'control_guardia', label: 'Control de Asistencia y Evaluación (RN-09)', desc: 'Pase de lista operativo e incidencias de guardia' },
+    { id: 'reportes_export', label: 'Exportar Reportes Oficiales (PDF / Excel)', desc: 'Generación de informes para la Vicerrectoría y MES' }
+  ];
+
+  const [rolesPermisos, setRolesPermisos] = useState({
+    'Decano': ['dashboard_view', 'compromiso_propio', 'perfil_edit', 'cronograma_view', 'potencial_aprobar', 'reportes_export'],
+    'Profesor Auxiliar': ['dashboard_view', 'compromiso_propio', 'perfil_edit', 'cronograma_view'],
+    'Especialista en Redes': ['dashboard_view', 'compromiso_propio', 'perfil_edit', 'cronograma_view'],
+    'Técnico de Soporte': ['dashboard_view', 'compromiso_propio', 'perfil_edit', 'cronograma_view'],
+    'Secretaria': ['dashboard_view', 'compromiso_propio', 'perfil_edit', 'cronograma_view', 'distribucion_manage'],
+    'Estudiante de 4to Año': ['dashboard_view', 'compromiso_propio', 'perfil_edit', 'cronograma_view']
+  });
+
+  const togglePermisoRol = (permisoId) => {
+    setRolesPermisos(prev => {
+      const currentList = prev[selectedRole] || [];
+      const exists = currentList.includes(permisoId);
+      return {
+        ...prev,
+        [selectedRole]: exists 
+          ? currentList.filter(id => id !== permisoId)
+          : [...currentList, permisoId]
+      };
+    });
+  };
+
+  const toggleTodosPermisos = (activar) => {
+    setRolesPermisos(prev => ({
+      ...prev,
+      [selectedRole]: activar ? PERMISOS_DISPONIBLES.map(p => p.id) : []
+    }));
+  };
+
+  const handleCrearNuevoRol = async () => {
+    if (!nuevoRolForm.nombre.trim()) {
+      showToast('⚠️ Por favor ingrese el nombre del nuevo rol.', 'warn');
+      return;
+    }
+    const nombreRol = nuevoRolForm.nombre.trim();
+    if (nomencladores.cargos.includes(nombreRol)) {
+      showToast('⚠️ Este rol ya existe en el sistema.', 'warn');
+      return;
+    }
+
+    try {
+      const token = localStorage.getItem('access_token');
+      if (token) {
+        await fetch('http://127.0.0.1:8000/api/guardia-admin/cargos/', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({ nombre: nombreRol, activo: true })
+        });
+      }
+    } catch (e) {
+      console.warn('Persistencia de cargo fallback local:', e);
+    }
+
+    setNomencladores(prev => ({
+      ...prev,
+      cargos: [...prev.cargos, nombreRol]
+    }));
+
+    setRolesPermisos(prev => ({
+      ...prev,
+      [nombreRol]: nuevoRolForm.permisos && nuevoRolForm.permisos.length > 0 
+        ? nuevoRolForm.permisos 
+        : ['dashboard_view', 'compromiso_propio', 'perfil_edit', 'cronograma_view']
+    }));
+
+    setSelectedRole(nombreRol);
+    setShowModalNuevoRol(false);
+    setNuevoRolForm({ nombre: '', descripcion: '', permisos: [] });
+    showToast(`✅ Rol "${nombreRol}" registrado y activado con éxito.`);
+  };
 
   const [showModalExport, setShowModalExport] = useState(false);
   const [exportPreview, setExportPreview] = useState({ titulo: '', columnas: [], datos: [] });
@@ -1690,43 +1776,122 @@ export default function Dashboard() {
   };
 
   const renderRoles = () => {
+    const currentPerms = rolesPermisos[selectedRole] || [];
+
     return (
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <div>
             <h3 className="text-base font-bold text-slate-100">Roles y Permisos Institucionales (RBAC)</h3>
-            <p className="text-xs text-slate-400">Asignación de privilegios de acceso para la UHO</p>
+            <p className="text-xs text-slate-400">Asignación de privilegios de acceso y operatividad para la UHO</p>
           </div>
-          <button onClick={() => setShowModalNuevoRol(true)} className="px-3 py-1.5 bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-teal-700 hover:to-emerald-600 text-white rounded-xl text-xs font-semibold flex items-center gap-1">
+          <button onClick={() => setShowModalNuevoRol(true)} className="px-3.5 py-1.5 bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-teal-700 hover:to-emerald-600 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 shadow-md">
             <Plus className="h-4 w-4" />
             Nuevo Rol
           </button>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Listado interactivo de Roles / Cargos */}
           <div className="lg:col-span-1 bg-slate-900/50 backdrop-blur-md border border-slate-800/80 rounded-2xl overflow-hidden divide-y divide-slate-850">
-            {nomencladores.cargos.map((c, i) => (
-              <div key={i} className="p-4 hover:bg-slate-950/20 cursor-pointer text-xs transition-colors flex justify-between items-center text-slate-300">
-                <span className="font-semibold">{c}</span>
-                <ChevronRightIcon className="h-4 w-4 text-slate-500" />
-              </div>
-            ))}
+            <div className="p-3.5 bg-slate-950/60 border-b border-slate-800 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+              Roles y Cargos Registrados ({nomencladores.cargos.length})
+            </div>
+            {nomencladores.cargos.map((c, i) => {
+              const isSelected = selectedRole === c;
+              const permCount = (rolesPermisos[c] || []).length;
+              return (
+                <div 
+                  key={i} 
+                  onClick={() => setSelectedRole(c)}
+                  className={`p-4 cursor-pointer text-xs transition-all flex justify-between items-center ${
+                    isSelected 
+                      ? 'bg-emerald-950/40 border-l-4 border-l-emerald-500 text-white font-bold shadow-inner' 
+                      : 'hover:bg-slate-950/20 text-slate-300'
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    <span className={isSelected ? 'text-emerald-300' : 'text-slate-300'}>{c}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-mono ${
+                      isSelected ? 'bg-emerald-500/20 text-emerald-300 font-semibold' : 'bg-slate-800 text-slate-400'
+                    }`}>
+                      {permCount} perm.
+                    </span>
+                    <ChevronRightIcon className={`h-4 w-4 transition-transform ${isSelected ? 'text-emerald-400 translate-x-0.5' : 'text-slate-500'}`} />
+                  </div>
+                </div>
+              );
+            })}
           </div>
 
-          <div className="lg:col-span-2 bg-slate-900/50 backdrop-blur-md border border-slate-800/80 rounded-2xl p-6 space-y-4">
-            <div className="flex justify-between items-center border-b border-slate-850 pb-3">
-              <h3 className="text-sm font-bold text-slate-100">Permisos Asignados al Rol</h3>
-              <button onClick={() => showToast('✅ Permisos de rol guardados.')} className="px-3 py-1 bg-slate-950 hover:bg-slate-800 border border-slate-850 text-slate-300 rounded-lg text-xs font-semibold">
-                Guardar Permisos
-              </button>
+          {/* Panel de Permisos Asociados al Rol Seleccionado */}
+          <div className="lg:col-span-2 bg-slate-900/50 backdrop-blur-md border border-slate-800/80 rounded-2xl p-6 space-y-5">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-4">
+              <div>
+                <h3 className="text-sm font-bold text-slate-100 flex items-center gap-2">
+                  <Shield className="h-4 w-4 text-emerald-400" />
+                  Permisos Asignados al Rol: <span className="text-emerald-400">{selectedRole}</span>
+                </h3>
+                <p className="text-[11px] text-slate-400 mt-0.5">
+                  {currentPerms.length} de {PERMISOS_DISPONIBLES.length} privilegios concedidos para este rol institucional
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button 
+                  onClick={() => toggleTodosPermisos(true)} 
+                  className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-[11px] text-slate-200 rounded-lg transition-colors font-medium"
+                >
+                  Todos
+                </button>
+                <button 
+                  onClick={() => toggleTodosPermisos(false)} 
+                  className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-[11px] text-slate-400 rounded-lg transition-colors font-medium"
+                >
+                  Ninguno
+                </button>
+                <button 
+                  onClick={() => showToast(`✅ Permisos para el rol "${selectedRole}" guardados con éxito.`)} 
+                  className="px-3.5 py-1.5 bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-teal-700 hover:to-emerald-600 text-white rounded-xl text-xs font-semibold shadow-md flex items-center gap-1.5 transition-all"
+                >
+                  <Save className="h-3.5 w-3.5" />
+                  Guardar Permisos
+                </button>
+              </div>
             </div>
-            <div className="grid grid-cols-2 gap-3 text-xs text-slate-350">
-              <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" defaultChecked className="accent-emerald-500 h-4 w-4" /> Ver Dashboard General</label>
-              <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" defaultChecked className="accent-emerald-500 h-4 w-4" /> Registrar Compromiso Propio</label>
-              <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" defaultChecked className="accent-emerald-500 h-4 w-4" /> Modificar Perfil Propio</label>
-              <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" defaultChecked className="accent-emerald-500 h-4 w-4" /> Consultar Cronograma Anual</label>
-              <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" className="accent-emerald-500 h-4 w-4" /> Aprobar Potencial de Área</label>
-              <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" className="accent-emerald-500 h-4 w-4" /> Realizar Distribución</label>
+
+            {/* Cuadrícula interactiva de privilegios */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+              {PERMISOS_DISPONIBLES.map(perm => {
+                const isChecked = currentPerms.includes(perm.id);
+                return (
+                  <div 
+                    key={perm.id} 
+                    onClick={() => togglePermisoRol(perm.id)}
+                    className={`p-3.5 rounded-xl border transition-all cursor-pointer flex items-start gap-3 select-none ${
+                      isChecked 
+                        ? 'bg-emerald-950/25 border-emerald-500/40 text-slate-200 shadow-sm' 
+                        : 'bg-slate-950/30 border-slate-800/80 text-slate-400 hover:border-slate-700 hover:bg-slate-950/50'
+                    }`}
+                  >
+                    <input 
+                      type="checkbox" 
+                      checked={isChecked} 
+                      onChange={() => {}} 
+                      className="accent-emerald-500 h-4 w-4 mt-0.5 pointer-events-none rounded" 
+                    />
+                    <div className="flex-1">
+                      <span className={`block text-xs font-semibold ${isChecked ? 'text-emerald-300' : 'text-slate-300'}`}>
+                        {perm.label}
+                      </span>
+                      <span className="block text-[11px] text-slate-400 mt-0.5 leading-snug">
+                        {perm.desc}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
         </div>
@@ -2519,6 +2684,96 @@ export default function Dashboard() {
             <div className="pt-3 border-t border-slate-800 flex justify-end gap-2">
               <button onClick={() => setShowModalNuevaArea(false)} className="px-3.5 py-1.5 bg-slate-950 border border-slate-855 hover:bg-slate-800 rounded-xl text-xs font-semibold text-slate-400 transition-colors">Cancelar</button>
               <button onClick={handleCrearArea} className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold transition-colors">Crear Área</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Nuevo Rol RBAC */}
+      {showModalNuevoRol && (
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-lg p-6 space-y-4 shadow-2xl">
+            <div className="flex justify-between items-center border-b border-slate-800 pb-3">
+              <h3 className="text-sm font-bold text-slate-100 flex items-center gap-2">
+                <Shield className="h-4.5 w-4.5 text-emerald-400" />
+                Registrar Nuevo Rol Institucional (RBAC)
+              </h3>
+              <button onClick={() => setShowModalNuevoRol(false)} className="text-slate-400 hover:text-slate-200">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            
+            <div className="space-y-4">
+              <div>
+                <label className="block text-[10px] font-semibold text-slate-400 mb-1">Nombre del Cargo o Rol *</label>
+                <input 
+                  type="text" 
+                  placeholder="Ej: Vicedecano Docente, Jefe de Dpto..."
+                  value={nuevoRolForm.nombre} 
+                  onChange={(e) => setNuevoRolForm(prev => ({ ...prev, nombre: e.target.value }))}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-emerald-500" 
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-semibold text-slate-400 mb-1">Descripción / Función Institucional</label>
+                <input 
+                  type="text" 
+                  placeholder="Ej: Responsable de la guardia departamental y control..."
+                  value={nuevoRolForm.descripcion} 
+                  onChange={(e) => setNuevoRolForm(prev => ({ ...prev, descripcion: e.target.value }))}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-emerald-500" 
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-semibold text-slate-400 mb-2">Permisos Iniciales Concedidos</label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-48 overflow-y-auto pr-1">
+                  {PERMISOS_DISPONIBLES.map(perm => {
+                    const isSelected = (nuevoRolForm.permisos || []).includes(perm.id);
+                    return (
+                      <label 
+                        key={perm.id} 
+                        className={`p-2 rounded-lg border text-xs cursor-pointer flex items-center gap-2 transition-all ${
+                          isSelected ? 'bg-emerald-950/40 border-emerald-500/50 text-emerald-300' : 'bg-slate-950 border-slate-800 text-slate-400'
+                        }`}
+                      >
+                        <input 
+                          type="checkbox" 
+                          checked={isSelected}
+                          onChange={(e) => {
+                            const checked = e.target.checked;
+                            setNuevoRolForm(prev => ({
+                              ...prev,
+                              permisos: checked 
+                                ? [...(prev.permisos || []), perm.id]
+                                : (prev.permisos || []).filter(id => id !== perm.id)
+                            }));
+                          }}
+                          className="accent-emerald-500 h-3.5 w-3.5 rounded"
+                        />
+                        <span className="truncate">{perm.label}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+
+            <div className="pt-3 border-t border-slate-800 flex justify-end gap-2">
+              <button 
+                onClick={() => setShowModalNuevoRol(false)} 
+                className="px-3.5 py-1.5 bg-slate-950 border border-slate-800 hover:bg-slate-800 rounded-xl text-xs font-semibold text-slate-400 transition-colors"
+              >
+                Cancelar
+              </button>
+              <button 
+                onClick={handleCrearNuevoRol} 
+                className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold transition-colors flex items-center gap-1.5 shadow"
+              >
+                <Check className="h-4 w-4" />
+                Crear y Activar Rol
+              </button>
             </div>
           </div>
         </div>

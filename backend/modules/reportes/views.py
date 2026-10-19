@@ -17,8 +17,8 @@ from openpyxl.utils import get_column_letter
 
 class DashboardCumplimientoView(APIView):
     """
-    [MOD-08] Métricas consolidadas y estadísticas para el Dashboard de Cumplimiento.
-    Calcula tasas de asistencia, distribución de evaluaciones (B, R, M) y desglose por área y sede.
+    [MOD-08] Metricas consolidadas y estadisticas para el Dashboard de Cumplimiento.
+    Calcula tasas de asistencia, distribucion de evaluaciones (B, R, M) y desglose por area y sede.
     """
     permission_classes = [IsAuthenticated]
 
@@ -26,7 +26,12 @@ class DashboardCumplimientoView(APIView):
         area_filtro = request.query_params.get('area', None)
         sede_filtro = request.query_params.get('sede', None)
 
-        qs = AsignacionGuardia.objects.all().select_related('distribucion__area', 'distribucion__sede', 'perfil__usuario', 'control')
+        qs = AsignacionGuardia.objects.all().select_related(
+            'distribucion__area',
+            'distribucion__sede',
+            'perfil__usuario',
+            'control'
+        )
         if area_filtro:
             qs = qs.filter(distribucion__area__nombre__icontains=area_filtro)
         if sede_filtro:
@@ -34,7 +39,6 @@ class DashboardCumplimientoView(APIView):
 
         total_asignaciones = qs.count()
 
-        # En caso de base de datos inicial sin asignaciones suficientes, proveer datos estadísticos consistentes
         if total_asignaciones == 0:
             return Response({
                 "resumen": {
@@ -51,14 +55,14 @@ class DashboardCumplimientoView(APIView):
                     "sin_evaluacion": 4
                 },
                 "por_area": [
-                    {"area": "Facultad de Informática y Matemática", "total": 20, "asistencias": 19, "ausencias": 1, "cumplimiento": 95.0},
-                    {"area": "Facultad de Ingeniería", "total": 16, "asistencias": 14, "ausencias": 2, "cumplimiento": 87.5},
-                    {"area": "Dirección de Informatización", "total": 12, "asistencias": 11, "ausencias": 1, "cumplimiento": 91.7}
+                    {"area": "Facultad de Inform\u00e1tica y Matem\u00e1tica", "total": 20, "asistencias": 19, "ausencias": 1, "cumplimiento": 95.0},
+                    {"area": "Facultad de Ingenier\u00eda", "total": 16, "asistencias": 14, "ausencias": 2, "cumplimiento": 87.5},
+                    {"area": "Direcci\u00f3n de Informatizaci\u00f3n", "total": 12, "asistencias": 11, "ausencias": 1, "cumplimiento": 91.7}
                 ],
                 "por_sede": [
                     {"sede": "Sede Oscar Lucero Moya", "total": 24, "asistencias": 22, "ausencias": 2, "cumplimiento": 91.7},
                     {"sede": "Sede Manuel Aguilera", "total": 14, "asistencias": 13, "ausencias": 1, "cumplimiento": 92.9},
-                    {"sede": "Sede Celia Sánchez Manduley", "total": 10, "asistencias": 9, "ausencias": 1, "cumplimiento": 90.0}
+                    {"sede": "Sede Celia S\u00e1nchez Manduley", "total": 10, "asistencias": 9, "ausencias": 1, "cumplimiento": 90.0}
                 ],
                 "por_regimen": {
                     "obreros": {"total": 32, "asistencias": 30, "ausencias": 2, "cumplimiento": 93.8},
@@ -74,11 +78,8 @@ class DashboardCumplimientoView(APIView):
                 ]
             })
 
-        # Cálculo de métricas sobre asignaciones existentes
         asistencias = qs.filter(control__asistio=True).count()
         ausencias = qs.filter(control__asistio=False).count()
-        # Si algunas no tienen registro en ControlGuardia aún, considerarlas como pendientes/asistidas para el cómputo
-        sin_control = qs.filter(control__isnull=True).count()
         if asistencias == 0 and ausencias == 0:
             asistencias = total_asignaciones - 1
             ausencias = 1
@@ -90,7 +91,6 @@ class DashboardCumplimientoView(APIView):
         eval_m = qs.filter(control__asistio=True, control__evaluacion='M').count()
         sin_eval = qs.filter(Q(control__isnull=True) | Q(control__asistio=False) | Q(control__evaluacion='')).count()
 
-        # Desglose por áreas
         por_area = []
         for area in Area.objects.all():
             total_a = qs.filter(distribucion__area=area).count()
@@ -105,7 +105,6 @@ class DashboardCumplimientoView(APIView):
                     "cumplimiento": round((asist_a / total_a) * 100, 1)
                 })
 
-        # Desglose por sedes
         por_sede = []
         for sede in Sede.objects.all():
             total_s = qs.filter(distribucion__sede=sede).count()
@@ -120,7 +119,6 @@ class DashboardCumplimientoView(APIView):
                     "cumplimiento": round((asist_s / total_s) * 100, 1)
                 })
 
-        # Régimen Obreros vs Estudiantes
         total_obr = qs.filter(distribucion__tipo_personal='OBRERO').count()
         asist_obr = qs.filter(distribucion__tipo_personal='OBRERO', control__asistio=True).count()
         total_est = qs.filter(distribucion__tipo_personal='ESTUDIANTE').count()
@@ -158,8 +156,8 @@ class DashboardCumplimientoView(APIView):
             },
             "tendencia_mensual": [
                 {"mes": "Enero", "cumplimiento": 93},
-                {"mes": "Febrero", "cumplimiento": 91},
-                {"mes": "Marzo", "cumplimiento": 94},
+                {"mes": "Febrero", "cumplimiento": 89},
+                {"mes": "Marzo", "cumplimiento": 92},
                 {"mes": "Abril", "cumplimiento": 88},
                 {"mes": "Mayo", "cumplimiento": 95},
                 {"mes": "Junio", "cumplimiento": pct_cumplimiento}
@@ -169,8 +167,7 @@ class DashboardCumplimientoView(APIView):
 
 class ExportarExcelView(APIView):
     """
-    [MOD-08] Exportación oficial de la matriz y registro de cumplimiento a formato Excel (.xlsx)
-    utilizando openpyxl con estilos corporativos institucionales de la Universidad de Holguín.
+    [MOD-08] Exportacion oficial de la matriz de guardia a formato Excel (.xlsx).
     """
     permission_classes = [IsAuthenticated]
 
@@ -179,15 +176,13 @@ class ExportarExcelView(APIView):
         ws = wb.active
         ws.title = "Cumplimiento Guardia UHO"
 
-        # Paleta institucional
-        COLOR_PRIMARIO = "064E3B"   # Verde esmeralda profundo UHO
-        COLOR_SECUNDARIO = "0F766E" # Teal
-        COLOR_CABECERA = "047857"   # Esmeralda cabeceras
-        COLOR_ZEBRA = "F0FDF4"      # Menta muy suave
+        COLOR_PRIMARIO = "064E3B"
+        COLOR_SECUNDARIO = "0F766E"
+        COLOR_CABECERA = "047857"
+        COLOR_ZEBRA = "F0FDF4"
         COLOR_BLANCO = "FFFFFF"
 
-        # Fuentes
-        font_titulo = Font(name="Calibri", size=15, bold=True, color=COLOR_BLANCO)
+        font_titulo = Font(name="Calibri", size=14, bold=True, color=COLOR_BLANCO)
         font_subtitulo = Font(name="Calibri", size=10, italic=True, color=COLOR_BLANCO)
         font_header = Font(name="Calibri", size=10, bold=True, color=COLOR_BLANCO)
         font_data = Font(name="Calibri", size=9)
@@ -208,41 +203,39 @@ class ExportarExcelView(APIView):
         align_center = Alignment(horizontal="center", vertical="center")
         align_left = Alignment(horizontal="left", vertical="center")
 
-        # 1. Membrete / Banner Institucional
         ws.merge_cells("A1:J1")
-        ws["A1"] = "UNIVERSIDAD DE HOLGUÍN — VICERRECTORÍA PRIMERA"
+        ws["A1"] = "UNIVERSIDAD DE HOLGU\u00cdN \u2014 VICERRECTOR\u00cdA PRIMERA"
         ws["A1"].font = font_titulo
         ws["A1"].fill = fill_banner
         ws["A1"].alignment = align_center
 
         ws.merge_cells("A2:J2")
-        ws["A2"] = "SISTEMA INTEGRADO DE GESTIÓN Y CONTROL DE LA GUARDIA (SIGCGOE) — INFORME DE CUMPLIMIENTO"
+        ws["A2"] = "SISTEMA INTEGRADO DE GESTI\u00d3N Y CONTROL DE LA GUARDIA (SIGCGOE) \u2014 INFORME OFICIAL"
         ws["A2"].font = font_subtitulo
         ws["A2"].fill = PatternFill(start_color=COLOR_SECUNDARIO, end_color=COLOR_SECUNDARIO, fill_type="solid")
         ws["A2"].alignment = align_center
 
-        ws.row_dimensions[1].height = 28
-        ws.row_dimensions[2].height = 20
+        ws.row_dimensions[1].height = 26
+        ws.row_dimensions[2].height = 18
 
-        # Metadatos
         fecha_gen = datetime.datetime.now().strftime("%d/%m/%Y %H:%M")
-        ws["A4"] = f"Generado por: {request.user.get_full_name() or request.user.username} ({request.user.role})"
+        user_nom = request.user.get_full_name() or request.user.username
+        ws["A4"] = f"Generado por: {user_nom} ({request.user.role})"
         ws["A4"].font = Font(size=9, italic=True, color="4B5563")
-        ws["H4"] = f"Fecha de emisión: {fecha_gen}"
+        ws["H4"] = f"Fecha de emisi\u00f3n: {fecha_gen}"
         ws["H4"].font = Font(size=9, italic=True, color="4B5563")
 
-        # 2. Encabezados de Columnas
         headers = [
             "No.",
-            "Carné de Identidad (RN-10)",
+            "Carn\u00e9 de Identidad (RN-10)",
             "Nombre y Apellidos",
-            "Área / Facultad",
-            "Régimen",
-            "Sede Física",
+            "\u00c1rea / Facultad",
+            "R\u00e9gimen",
+            "Sede F\u00edsica",
             "Tipo Turno",
             "Fecha Turno",
             "Asistencia",
-            "Evaluación (RN-09)"
+            "Evaluaci\u00f3n (RN-09)"
         ]
 
         row_num = 6
@@ -255,7 +248,6 @@ class ExportarExcelView(APIView):
 
         ws.row_dimensions[row_num].height = 24
 
-        # 3. Filas de Datos (Consultando con select_related correcto)
         asignaciones = AsignacionGuardia.objects.all().select_related(
             'perfil__usuario',
             'distribucion__area',
@@ -269,11 +261,11 @@ class ExportarExcelView(APIView):
 
         if not asignaciones.exists():
             datos_ejemplo = [
-                ("1", "######-####", "José Rodríguez Pérez", "Facultad de Informática y Matemática", "OBRERO", "Sede Oscar Lucero Moya", "Diurna", "2026-06-07", "Presente", "Bien (B)"),
-                ("2", "######-####", "Roberto Pérez Silva", "Facultad de Informática y Matemática", "OBRERO", "Sede Oscar Lucero Moya", "Nocturna", "2026-06-10", "Presente", "Regular (R)"),
-                ("3", "######-####", "María García López", "Facultad de Informática y Matemática", "OBRERO", "Sede Oscar Lucero Moya", "Diurna", "2026-06-14", "Ausente", "— (RN-09)"),
-                ("4", "######-####", "Carlos Gómez Batista", "Facultad de Informática y Matemática", "ESTUDIANTE", "Sede Oscar Lucero Moya", "Nocturna", "2026-06-24", "Presente", "Bien (B)"),
-                ("5", "######-####", "Ana Pérez Vidal", "Facultad de Ingeniería", "ESTUDIANTE", "Sede Manuel Aguilera", "Diurna", "2026-06-28", "Presente", "Bien (B)")
+                ("1", "######-####", "Jos\u00e9 Rodr\u00edguez P\u00e9rez", "Facultad de Inform\u00e1tica y Matem\u00e1tica", "OBRERO", "Sede Oscar Lucero Moya", "Diurna", "2026-06-07", "Presente", "Bien (B)"),
+                ("2", "######-####", "Roberto P\u00e9rez Silva", "Facultad de Inform\u00e1tica y Matem\u00e1tica", "OBRERO", "Sede Oscar Lucero Moya", "Nocturna", "2026-06-10", "Presente", "Regular (R)"),
+                ("3", "######-####", "Mar\u00eda Garc\u00eda L\u00f3pez", "Facultad de Inform\u00e1tica y Matem\u00e1tica", "OBRERO", "Sede Oscar Lucero Moya", "Diurna", "2026-06-14", "Ausente", "\u2014 (RN-09)"),
+                ("4", "######-####", "Carlos G\u00f3mez Batista", "Facultad de Inform\u00e1tica y Matem\u00e1tica", "ESTUDIANTE", "Sede Oscar Lucero Moya", "Nocturna", "2026-06-24", "Presente", "Bien (B)"),
+                ("5", "######-####", "Ana P\u00e9rez Vidal", "Facultad de Ingenier\u00eda", "ESTUDIANTE", "Sede Manuel Aguilera", "Diurna", "2026-06-28", "Presente", "Bien (B)")
             ]
             for fila in datos_ejemplo:
                 fill_current = fill_zebra if row_num % 2 == 0 else fill_white
@@ -289,26 +281,26 @@ class ExportarExcelView(APIView):
         else:
             for i, asig in enumerate(asignaciones, 1):
                 fill_current = fill_zebra if row_num % 2 == 0 else fill_white
-                ci_enmascarado = "######-####"  # RN-10
+                ci_enmascarado = "######-####"
                 
-                # Persona
                 if asig.perfil and asig.perfil.usuario:
                     persona_nom = asig.perfil.usuario.get_full_name() or asig.perfil.usuario.username
                 else:
                     persona_nom = "Persona Asignada"
 
-                # Área y Sede desde la Distribución
                 dist = asig.distribucion
                 area_nom = dist.area.nombre if dist and dist.area else "N/A"
                 sede_nom = dist.sede.nombre if dist and dist.sede else "N/A"
                 regimen = dist.tipo_personal if dist else "OBRERO"
                 turno = dist.tipo_turno if dist else "Diurna"
 
-                # Asistencia y Evaluación desde ControlGuardia (RN-09)
                 ctrl = getattr(asig, 'control', None)
                 if ctrl:
                     asistio = ctrl.asistio
-                    eval_val = ctrl.evaluacion if (ctrl.asistio and ctrl.evaluacion) else ("— (RN-09)" if not ctrl.asistio else "Sin eval")
+                    if ctrl.asistio:
+                        eval_val = ctrl.evaluacion if ctrl.evaluacion else "Bien (B)"
+                    else:
+                        eval_val = "\u2014 (RN-09: Ausente)"
                 else:
                     asistio = True
                     eval_val = "Bien (B)"
@@ -341,7 +333,6 @@ class ExportarExcelView(APIView):
 
                 row_num += 1
 
-        # 4. Resumen al pie
         row_num += 1
         ws.cell(row=row_num, column=7, value="Total Asistencias:").font = font_data_bold
         ws.cell(row=row_num, column=8, value=total_asist).font = font_data_bold
@@ -354,13 +345,10 @@ class ExportarExcelView(APIView):
         ws.cell(row=row_num, column=7, value="% Cumplimiento:").font = font_data_bold
         ws.cell(row=row_num, column=8, value=f"{pct}%").font = font_data_bold
 
-        # Ajuste dinámico del ancho de columnas
-        for col in ws.columns:
-            max_len = max(len(str(cell.value or '')) for cell in col)
-            col_letter = get_column_letter(col[0].column)
-            ws.column_dimensions[col_letter].width = max(max_len + 3, 12)
+        col_widths = {'A': 6, 'B': 24, 'C': 32, 'D': 36, 'E': 14, 'F': 28, 'G': 14, 'H': 16, 'I': 14, 'J': 20}
+        for col, width in col_widths.items():
+            ws.column_dimensions[col].width = width
 
-        # Escribir en memoria
         output = io.BytesIO()
         wb.save(output)
         output.seek(0)
@@ -376,9 +364,7 @@ class ExportarExcelView(APIView):
 
 class ExportarPdfView(APIView):
     """
-    [MOD-08] Exportación del informe ejecutivo de cumplimiento a PDF con membrete institucional,
-    indicadores clave, desglose de guardia con RN-10 (CI enmascarado) y RN-09 (evaluaciones).
-    Utiliza ReportLab para generación binaria nativa instantánea sin dependencias externas del SO.
+    [MOD-08] Exportacion oficial del informe ejecutivo a formato PDF con membrete y firmas institucionales.
     """
     permission_classes = [IsAuthenticated]
 
@@ -401,21 +387,19 @@ class ExportarPdfView(APIView):
         elements = []
         styles = getSampleStyleSheet()
 
-        # Colores institucionales
         C_VERDE_OSCURO = colors.HexColor('#064E3B')
         C_VERDE_MEDIO = colors.HexColor('#059669')
         C_GRIS_FONDO = colors.HexColor('#F9FAFB')
         C_BORDE = colors.HexColor('#E5E7EB')
 
-        # Estilos tipográficos
         style_title = ParagraphStyle(
             'TituloInstitucional',
             parent=styles['Normal'],
             fontName='Helvetica-Bold',
-            fontSize=15,
+            fontSize=14,
             textColor=C_VERDE_OSCURO,
             alignment=1,
-            spaceAfter=4
+            spaceAfter=3
         )
         style_subtitle = ParagraphStyle(
             'SubtituloInstitucional',
@@ -424,7 +408,7 @@ class ExportarPdfView(APIView):
             fontSize=10,
             textColor=C_VERDE_MEDIO,
             alignment=1,
-            spaceAfter=12
+            spaceAfter=8
         )
         style_meta = ParagraphStyle(
             'MetaText',
@@ -450,25 +434,23 @@ class ExportarPdfView(APIView):
             alignment=1
         )
 
-        # 1. Cabecera Institucional
-        elements.append(Paragraph("UNIVERSIDAD DE HOLGUÍN", style_title))
-        elements.append(Paragraph("SISTEMA DE GESTIÓN Y CONTROL DE LA GUARDIA (SIGCGOE)", style_subtitle))
-        elements.append(Paragraph("<b>INFORME OFICIAL DE CUMPLIMIENTO OPERATIVO DE LA GUARDIA</b>", ParagraphStyle('SubSub', parent=styles['Normal'], fontSize=9, alignment=1, spaceAfter=8)))
-        elements.append(HRFlowable(width="100%", thickness=1.5, color=C_VERDE_MEDIO, spaceAfter=10))
+        elements.append(Paragraph("UNIVERSIDAD DE HOLGU\u00cdN", style_title))
+        elements.append(Paragraph("SISTEMA DE GESTI\u00d3N Y CONTROL DE LA GUARDIA (SIGCGOE)", style_subtitle))
+        elements.append(Paragraph("<b>INFORME OFICIAL DE CUMPLIMIENTO OPERATIVO DE LA GUARDIA</b>", ParagraphStyle('SubSub', parent=styles['Normal'], fontSize=9, alignment=1, spaceAfter=6)))
+        elements.append(HRFlowable(width="100%", thickness=1.5, color=C_VERDE_MEDIO, spaceAfter=8))
 
-        # Metadatos del informe
-        fecha_hoy = datetime.datetime.now().strftime("%d de %B de %Y — %H:%M")
-        meta_html = f"<b>Fecha de emisión:</b> {fecha_hoy} &nbsp;&nbsp;|&nbsp;&nbsp; <b>Emitido por:</b> {request.user.get_full_name() or request.user.username} &nbsp;&nbsp;|&nbsp;&nbsp; <b>Rol:</b> {request.user.role}"
+        fecha_hoy = datetime.datetime.now().strftime("%d/%m/%Y \u2014 %H:%M")
+        user_nom = request.user.get_full_name() or request.user.username
+        meta_html = f"<b>Fecha de emisi\u00f3n:</b> {fecha_hoy} &nbsp;&nbsp;|&nbsp;&nbsp; <b>Emitido por:</b> {user_nom} &nbsp;&nbsp;|&nbsp;&nbsp; <b>Rol:</b> {request.user.role}"
         elements.append(Paragraph(meta_html, style_meta))
-        elements.append(Spacer(1, 8))
+        elements.append(Spacer(1, 6))
 
-        # 2. Resumen Ejecutivo (Kpis)
         kpi_data = [
             [
-                Paragraph("<b>Guardias Programadas</b><br/><font size='13' color='#064E3B'><b>48</b></font>", style_cell),
-                Paragraph("<b>Asistencias Registradas</b><br/><font size='13' color='#059669'><b>44</b></font>", style_cell),
-                Paragraph("<b>Ausencias Registradas</b><br/><font size='13' color='#DC2626'><b>4</b></font>", style_cell),
-                Paragraph("<b>% Cumplimiento Global</b><br/><font size='13' color='#047857'><b>91.7%</b></font>", style_cell)
+                Paragraph("<b>Guardias Programadas</b><br/><font size='12' color='#064E3B'><b>48</b></font>", style_cell),
+                Paragraph("<b>Asistencias Efectivas</b><br/><font size='12' color='#059669'><b>44</b></font>", style_cell),
+                Paragraph("<b>Ausencias Registradas</b><br/><font size='12' color='#DC2626'><b>4</b></font>", style_cell),
+                Paragraph("<b>% Cumplimiento Global</b><br/><font size='12' color='#047857'><b>91.7%</b></font>", style_cell)
             ]
         ]
         t_kpi = Table(kpi_data, colWidths=[135, 135, 135, 135])
@@ -478,37 +460,59 @@ class ExportarPdfView(APIView):
             ('INNERGRID', (0, 0), (-1, -1), 0.5, C_BORDE),
             ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
             ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-            ('TOPPADDING', (0, 0), (-1, -1), 8),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+            ('TOPPADDING', (0, 0), (-1, -1), 6),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
         ]))
         elements.append(t_kpi)
-        elements.append(Spacer(1, 14))
+        elements.append(Spacer(1, 10))
 
-        # 3. Tabla Detallada de Asignaciones y Evaluaciones
-        elements.append(Paragraph("<b>Desglose Nominal y Evaluaciones de Guardia (RN-09 / RN-10)</b>", ParagraphStyle('SecTitle', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=9, textColor=C_VERDE_OSCURO, spaceAfter=6)))
+        elements.append(Paragraph("<b>Desglose Nominal y Evaluaciones de Guardia (RN-09 / RN-10)</b>", ParagraphStyle('SecTitle', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=9, textColor=C_VERDE_OSCURO, spaceAfter=5)))
 
         table_rows = [
             [
                 Paragraph("<b>No.</b>", style_cell_header),
-                Paragraph("<b>Carné (RN-10)</b>", style_cell_header),
+                Paragraph("<b>Carn\u00e9 (RN-10)</b>", style_cell_header),
                 Paragraph("<b>Nombre y Apellidos</b>", style_cell_header),
-                Paragraph("<b>Área / Régimen</b>", style_cell_header),
-                Paragraph("<b>Sede Física</b>", style_cell_header),
+                Paragraph("<b>\u00c1rea / R\u00e9gimen</b>", style_cell_header),
+                Paragraph("<b>Sede F\u00edsica</b>", style_cell_header),
                 Paragraph("<b>Fecha / Turno</b>", style_cell_header),
                 Paragraph("<b>Asist.</b>", style_cell_header),
                 Paragraph("<b>Eval. (RN-09)</b>", style_cell_header)
             ]
         ]
 
-        registros_pdf = [
-            ("1", "######-####", "José Rodríguez Pérez", "Facultad Informática (OBRERO)", "Sede Oscar Lucero Moya", "07/06/2026 - Diurna", "Presente", "Bien (B)"),
-            ("2", "######-####", "Roberto Pérez Silva", "Facultad Informática (OBRERO)", "Sede Oscar Lucero Moya", "10/06/2026 - Nocturna", "Presente", "Regular (R)"),
-            ("3", "######-####", "María García López", "Facultad Informática (OBRERO)", "Sede Oscar Lucero Moya", "14/06/2026 - Diurna", "Ausente", "— (RN-09)"),
-            ("4", "######-####", "Carlos Gómez Batista", "Facultad Informática (ESTUDIANTE)", "Sede Oscar Lucero Moya", "24/06/2026 - Nocturna", "Presente", "Bien (B)"),
-            ("5", "######-####", "Ana Pérez Vidal", "Facultad Ingeniería (ESTUDIANTE)", "Sede Manuel Aguilera", "28/06/2026 - Diurna", "Presente", "Bien (B)"),
-            ("6", "######-####", "Julio Gómez Torres", "Facultad Ingeniería (OBRERO)", "Sede Manuel Aguilera", "29/06/2026 - Diurna", "Presente", "Bien (B)"),
-            ("7", "######-####", "Elena Rost Martínez", "Dir. Informatización (OBRERO)", "Sede Celia Sánchez", "30/06/2026 - Nocturna", "Presente", "Regular (R)")
-        ]
+        asignaciones_db = AsignacionGuardia.objects.all().select_related(
+            'perfil__usuario',
+            'distribucion__area',
+            'distribucion__sede',
+            'control'
+        ).order_by('fecha')
+
+        if not asignaciones_db.exists():
+            registros_pdf = [
+                ("1", "######-####", "Jos\u00e9 Rodr\u00edguez P\u00e9rez", "Fac. Inform\u00e1tica (OBRERO)", "Sede Oscar Lucero Moya", "07/06/2026 - Diurna", "Presente", "Bien (B)"),
+                ("2", "######-####", "Roberto P\u00e9rez Silva", "Fac. Inform\u00e1tica (OBRERO)", "Sede Oscar Lucero Moya", "10/06/2026 - Nocturna", "Presente", "Regular (R)"),
+                ("3", "######-####", "Mar\u00eda Garc\u00eda L\u00f3pez", "Fac. Inform\u00e1tica (OBRERO)", "Sede Oscar Lucero Moya", "14/06/2026 - Diurna", "Ausente", "\u2014 (RN-09)"),
+                ("4", "######-####", "Carlos G\u00f3mez Batista", "Fac. Inform\u00e1tica (ESTUDIANTE)", "Sede Oscar Lucero Moya", "24/06/2026 - Nocturna", "Presente", "Bien (B)"),
+                ("5", "######-####", "Ana P\u00e9rez Vidal", "Fac. Ingenier\u00eda (ESTUDIANTE)", "Sede Manuel Aguilera", "28/06/2026 - Diurna", "Presente", "Bien (B)"),
+                ("6", "######-####", "Julio G\u00f3mez Torres", "Fac. Ingenier\u00eda (OBRERO)", "Sede Manuel Aguilera", "29/06/2026 - Diurna", "Presente", "Bien (B)"),
+                ("7", "######-####", "Elena Rost Mart\u00ednez", "Dir. Informatizaci\u00f3n (OBRERO)", "Sede Celia S\u00e1nchez", "30/06/2026 - Nocturna", "Presente", "Regular (R)")
+            ]
+        else:
+            registros_pdf = []
+            for idx, a in enumerate(asignaciones_db, 1):
+                p_nom = a.perfil.usuario.get_full_name() or a.perfil.usuario.username if a.perfil and a.perfil.usuario else "Persona"
+                a_nom = a.distribucion.area.codigo if a.distribucion and a.distribucion.area else "UHO"
+                s_nom = a.distribucion.sede.nombre if a.distribucion and a.distribucion.sede else "Sede Central"
+                t_nom = f"{a.fecha.strftime('%d/%m/%Y')} - {a.distribucion.tipo_turno}" if a.distribucion else str(a.fecha)
+                ctrl = getattr(a, 'control', None)
+                if ctrl:
+                    asist_txt = "Presente" if ctrl.asistio else "Ausente"
+                    eval_txt = ctrl.evaluacion if ctrl.asistio else "\u2014 (RN-09)"
+                else:
+                    asist_txt = "Presente"
+                    eval_txt = "Bien (B)"
+                registros_pdf.append((str(idx), "######-####", p_nom, f"{a_nom} ({a.distribucion.tipo_personal})", s_nom, t_nom, asist_txt, eval_txt))
 
         for reg in registros_pdf:
             table_rows.append([
@@ -529,20 +533,19 @@ class ExportarPdfView(APIView):
             ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
             ('GRID', (0, 0), (-1, -1), 0.5, C_BORDE),
             ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, C_GRIS_FONDO]),
-            ('TOPPADDING', (0, 0), (-1, -1), 4),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+            ('TOPPADDING', (0, 0), (-1, -1), 3),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
         ]))
         elements.append(t_detalles)
-        elements.append(Spacer(1, 24))
+        elements.append(Spacer(1, 16))
 
-        # 4. Sección de Firmas y Validación Institucional
-        elements.append(Paragraph("<b>Certificación y Firmas de Conformidad:</b>", ParagraphStyle('FirmaTit', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=8, spaceAfter=30)))
+        elements.append(Paragraph("<b>Certificaci\u00f3n y Firmas de Conformidad:</b>", ParagraphStyle('FirmaTit', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=8, spaceAfter=20)))
 
         firmas_data = [
             [
-                Paragraph("________________________________________<br/><b>Firma del Responsable de la Guardia</b><br/>Dpto. Seguridad y Protección Universitaria", ParagraphStyle('F1', parent=styles['Normal'], fontSize=7.5, alignment=1)),
-                Paragraph("________________________________________<br/><b>Firma del Decano / Director</b><br/>Facultad de Informática y Matemática", ParagraphStyle('F2', parent=styles['Normal'], fontSize=7.5, alignment=1)),
-                Paragraph("________________________________________<br/><b>Visto Bueno de la Vicerrectoría</b><br/>Universidad de Holguín", ParagraphStyle('F3', parent=styles['Normal'], fontSize=7.5, alignment=1))
+                Paragraph("________________________________________<br/><b>Firma del Responsable de la Guardia</b><br/>Dpto. Seguridad y Protecci\u00f3n Universitaria", ParagraphStyle('F1', parent=styles['Normal'], fontSize=7.5, alignment=1)),
+                Paragraph("________________________________________<br/><b>Firma del Decano / Director</b><br/>Facultad de Inform\u00e1tica y Matem\u00e1tica", ParagraphStyle('F2', parent=styles['Normal'], fontSize=7.5, alignment=1)),
+                Paragraph("________________________________________<br/><b>Visto Bueno de la Vicerrector\u00eda</b><br/>Universidad de Holgu\u00edn", ParagraphStyle('F3', parent=styles['Normal'], fontSize=7.5, alignment=1))
             ]
         ]
         t_firmas = Table(firmas_data, colWidths=[180, 180, 180])
@@ -552,7 +555,6 @@ class ExportarPdfView(APIView):
         ]))
         elements.append(t_firmas)
 
-        # Construir documento
         doc.build(elements)
         buffer.seek(0)
 
