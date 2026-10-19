@@ -91,6 +91,7 @@ export default function Dashboard() {
     dias: [7, 14, 21, 28]
   });
   const [fechaControl, setFechaControl] = useState('2026-06-07');
+  const [filtroEstadoControl, setFiltroEstadoControl] = useState('TODOS'); // 'TODOS' | 'PENDIENTES' | 'PRESENTES' | 'AUSENTES' | 'JUSTIFICADOS'
 
   // MOD-08: Estadísticas y Dashboard de Cumplimiento (Cargado desde /api/control/historial/)
   const [datosCumplimiento, setDatosCumplimiento] = useState({
@@ -1876,21 +1877,38 @@ export default function Dashboard() {
     let justificadosCount = 0;
     let pendientesCount = 0;
 
-    personal.forEach(p => {
-      const asig = asignaciones.find(a => a.personaId === p.id && a.fecha === fechaControl);
-      let est = asig?.estado;
-      if (!est) {
-        if (asig?.asistio === true) est = 'PRESENTE';
-        else if (asig?.asistio === false) {
-          est = asig?.observaciones?.toLowerCase().includes('justificad') ? 'JUSTIFICADO' : 'AUSENTE';
+    const personalConEstado = personal.map(p => {
+      const asignacion = asignaciones.find(a => a.personaId === p.id && a.fecha === fechaControl);
+      let estadoActual = asignacion?.estado;
+      if (!estadoActual) {
+        if (asignacion?.asistio === true) estadoActual = 'PRESENTE';
+        else if (asignacion?.asistio === false) {
+          estadoActual = asignacion?.observaciones?.toLowerCase().includes('justificad') ? 'JUSTIFICADO' : 'AUSENTE';
         } else {
-          est = 'PENDIENTE';
+          estadoActual = 'PENDIENTE';
         }
       }
-      if (est === 'PRESENTE') presentesCount++;
-      else if (est === 'AUSENTE') ausentesCount++;
-      else if (est === 'JUSTIFICADO') justificadosCount++;
+
+      if (estadoActual === 'PRESENTE') presentesCount++;
+      else if (estadoActual === 'AUSENTE') ausentesCount++;
+      else if (estadoActual === 'JUSTIFICADO') justificadosCount++;
       else pendientesCount++;
+
+      return {
+        ...p,
+        asignacion,
+        estadoActual,
+        evalVal: asignacion ? asignacion.evaluacion : '',
+        obsVal: asignacion ? asignacion.observaciones : ''
+      };
+    });
+
+    const personalFiltrado = personalConEstado.filter(p => {
+      if (filtroEstadoControl === 'PENDIENTES') return p.estadoActual === 'PENDIENTE';
+      if (filtroEstadoControl === 'PRESENTES') return p.estadoActual === 'PRESENTE';
+      if (filtroEstadoControl === 'AUSENTES') return p.estadoActual === 'AUSENTE';
+      if (filtroEstadoControl === 'JUSTIFICADOS') return p.estadoActual === 'JUSTIFICADO';
+      return true; // 'TODOS'
     });
 
     const totalConvocados = personal.length;
@@ -1967,166 +1985,253 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Tabla de pase de lista */}
-        <div className="bg-slate-900/50 backdrop-blur-md border border-slate-800/80 rounded-2xl overflow-x-auto shadow-xl">
-          <table className="w-full text-xs text-left min-w-[780px]">
-            <thead className="bg-slate-950 text-slate-300 font-bold border-b border-slate-800">
-              <tr>
-                <th className="p-4">Nombre y Apellidos</th>
-                <th className="p-4">Rol / Tipo</th>
-                <th className="p-4">Teléfono</th>
-                <th className="p-4">¿Asistencia / Estado?</th>
-                <th className="p-4">Evaluación de Desempeño (RN-09)</th>
-                <th className="p-4">Observaciones / Incidencias</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-850">
-              {personal.map(p => {
-                const asignacion = asignaciones.find(a => a.personaId === p.id && a.fecha === fechaControl);
-                let estadoActual = asignacion?.estado;
-                if (!estadoActual) {
-                  if (asignacion?.asistio === true) estadoActual = 'PRESENTE';
-                  else if (asignacion?.asistio === false) {
-                    estadoActual = asignacion?.observaciones?.toLowerCase().includes('justificad') ? 'JUSTIFICADO' : 'AUSENTE';
-                  } else {
-                    estadoActual = 'PENDIENTE';
-                  }
-                }
-                const evalVal = asignacion ? asignacion.evaluacion : '';
-                const obsVal = asignacion ? asignacion.observaciones : '';
-
-                return (
-                  <tr key={p.id} className="hover:bg-slate-950/30 text-slate-300 transition-colors">
-                    <td className="p-4 font-semibold text-slate-200">
-                      <div>{p.nombre}</div>
-                      <span className="text-[10px] text-slate-500 font-normal">{p.cargo || p.area || 'UHO'}</span>
-                    </td>
-                    <td className="p-4">
-                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${p.tipo === 'OBRERO' ? 'bg-blue-950 text-blue-400 border border-blue-800/40' : 'bg-green-950 text-green-400 border border-green-800/40'}`}>
-                        {p.tipo}
-                      </span>
-                    </td>
-                    <td className="p-4 text-slate-400 font-mono">{p.celular || p.telefono || 'N/A'}</td>
-                    
-                    {/* Botones de acción de asistencia intuitiva */}
-                    <td className="p-4">
-                      <div className="space-y-1.5">
-                        <div className="flex items-center gap-1.5">
-                          <button
-                            type="button"
-                            onClick={() => handleSetEstadoAsistencia(fechaControl, p.id, estadoActual === 'PRESENTE' ? 'PENDIENTE' : 'PRESENTE')}
-                            className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1 ${
-                              estadoActual === 'PRESENTE'
-                                ? 'bg-emerald-600 text-white shadow-md shadow-emerald-950/60 ring-2 ring-emerald-400'
-                                : 'bg-slate-900 text-slate-400 hover:text-emerald-400 hover:bg-emerald-950/30 border border-slate-800'
-                            }`}
-                            title="Marcar como presente"
-                          >
-                            <Check className="h-3.5 w-3.5" />
-                            <span>Presente</span>
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() => handleSetEstadoAsistencia(fechaControl, p.id, estadoActual === 'AUSENTE' ? 'PENDIENTE' : 'AUSENTE')}
-                            className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1 ${
-                              estadoActual === 'AUSENTE'
-                                ? 'bg-red-600 text-white shadow-md shadow-red-950/60 ring-2 ring-red-400'
-                                : 'bg-slate-900 text-slate-400 hover:text-red-400 hover:bg-red-950/30 border border-slate-800'
-                            }`}
-                            title="Marcar como ausente injustificado"
-                          >
-                            <X className="h-3.5 w-3.5" />
-                            <span>Ausente</span>
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() => handleSetEstadoAsistencia(fechaControl, p.id, estadoActual === 'JUSTIFICADO' ? 'PENDIENTE' : 'JUSTIFICADO')}
-                            className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1 ${
-                              estadoActual === 'JUSTIFICADO'
-                                ? 'bg-amber-600 text-white shadow-md shadow-amber-950/60 ring-2 ring-amber-400'
-                                : 'bg-slate-900 text-slate-400 hover:text-amber-400 hover:bg-amber-950/30 border border-slate-800'
-                            }`}
-                            title="Marcar como ausencia justificada / licencia médica"
-                          >
-                            <Award className="h-3.5 w-3.5" />
-                            <span>Justificado</span>
-                          </button>
-                        </div>
-
-                        {/* Indicador de estado */}
-                        <div>
-                          {estadoActual === 'PRESENTE' && (
-                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-400 bg-emerald-950/60 px-2 py-0.5 rounded-full border border-emerald-800/40">
-                              <CheckCircle2 className="h-3 w-3" /> Asistencia Confirmada
-                            </span>
-                          )}
-                          {estadoActual === 'AUSENTE' && (
-                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-red-400 bg-red-950/60 px-2 py-0.5 rounded-full border border-red-800/40">
-                              <AlertTriangle className="h-3 w-3" /> Ausencia Registrada
-                            </span>
-                          )}
-                          {estadoActual === 'JUSTIFICADO' && (
-                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-400 bg-amber-950/60 px-2 py-0.5 rounded-full border border-amber-800/40">
-                              <Award className="h-3 w-3" /> Permiso / Justificación
-                            </span>
-                          )}
-                          {estadoActual === 'PENDIENTE' && (
-                            <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-slate-500 bg-slate-950/60 px-2 py-0.5 rounded-full border border-slate-800">
-                              <Clock className="h-3 w-3" /> Pendiente de pase de lista
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    </td>
-
-                    {/* Calificación de Desempeño (RN-09) */}
-                    <td className="p-4">
-                      {estadoActual === 'PRESENTE' ? (
-                        <div className="space-y-1">
-                          <select 
-                            value={evalVal || 'B'}
-                            onChange={(e) => handleUpdateEvaluacion(fechaControl, p.id, e.target.value)}
-                            className="bg-slate-950 border border-emerald-600/40 rounded-lg px-2.5 py-1 text-xs text-emerald-300 font-semibold focus:outline-none focus:border-emerald-500"
-                          >
-                            <option value="B">Bien (B) - Cumplimiento destacado</option>
-                            <option value="R">Regular (R) - Con incidencias leves</option>
-                            <option value="M">Mal (M) - Incumplimiento grave</option>
-                          </select>
-                          <div className="text-[10px] text-slate-500">Evaluación obligatoria según RN-09</div>
-                        </div>
-                      ) : estadoActual === 'JUSTIFICADO' ? (
-                        <span className="text-[11px] font-semibold text-amber-400/90 italic px-2.5 py-1 bg-amber-950/30 rounded-lg border border-amber-800/40 inline-block">
-                          Exonerado (RN-09: Justificado)
-                        </span>
-                      ) : estadoActual === 'AUSENTE' ? (
-                        <span className="text-[11px] font-semibold text-red-400/80 italic px-2.5 py-1 bg-red-950/30 rounded-lg border border-red-800/40 inline-block">
-                          Sin eval (RN-09: Ausente)
-                        </span>
-                      ) : (
-                        <span className="text-[11px] font-semibold text-slate-500 italic px-2.5 py-1 bg-slate-950/40 rounded-lg border border-slate-850 inline-block">
-                          Sin registrar
-                        </span>
-                      )}
-                    </td>
-
-                    {/* Observaciones / Incidencias */}
-                    <td className="p-4">
-                      <input 
-                        type="text" 
-                        placeholder={estadoActual === 'JUSTIFICADO' ? "Motivo: Licencia médica, comisión..." : "Notas de asistencia o sustitución..."}
-                        value={obsVal}
-                        onChange={(e) => handleUpdateObservaciones(fechaControl, p.id, e.target.value)}
-                        className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-slate-700" 
-                      />
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+        {/* Pestañas de filtrado de vista */}
+        <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-900/60 p-2.5 rounded-xl border border-slate-800/80">
+          <div className="flex flex-wrap items-center gap-1.5 text-xs">
+            <span className="text-slate-400 font-semibold mr-1 text-[11px]">Vista de pase de lista:</span>
+            <button
+              type="button"
+              onClick={() => setFiltroEstadoControl('TODOS')}
+              className={`px-3 py-1.5 rounded-lg font-bold transition-all ${
+                filtroEstadoControl === 'TODOS'
+                  ? 'bg-emerald-600 text-white shadow-md shadow-emerald-950/40 ring-1 ring-emerald-400'
+                  : 'bg-slate-950 text-slate-400 hover:text-slate-200 border border-slate-800'
+              }`}
+            >
+              Ver Todos ({personal.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setFiltroEstadoControl('PENDIENTES')}
+              className={`px-3 py-1.5 rounded-lg font-bold transition-all flex items-center gap-1.5 ${
+                filtroEstadoControl === 'PENDIENTES'
+                  ? 'bg-blue-600 text-white shadow-md shadow-blue-950/40 ring-1 ring-blue-400'
+                  : 'bg-slate-950 text-blue-400 hover:bg-blue-950/30 border border-blue-900/40'
+              }`}
+              title="Muestra solo a los que faltan por registrar. Al marcarlos como Presente o Ausente, se filtran de la vista."
+            >
+              <Clock className="h-3.5 w-3.5" />
+              <span>Solo Pendientes ({pendientesCount})</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setFiltroEstadoControl('PRESENTES')}
+              className={`px-3 py-1.5 rounded-lg font-bold transition-all flex items-center gap-1.5 ${
+                filtroEstadoControl === 'PRESENTES'
+                  ? 'bg-emerald-600 text-white shadow-md shadow-emerald-950/40 ring-1 ring-emerald-400'
+                  : 'bg-slate-950 text-emerald-400 hover:bg-emerald-950/30 border border-emerald-900/30'
+              }`}
+            >
+              <CheckCircle2 className="h-3.5 w-3.5" />
+              <span>Presentes ({presentesCount})</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setFiltroEstadoControl('AUSENTES')}
+              className={`px-3 py-1.5 rounded-lg font-bold transition-all flex items-center gap-1.5 ${
+                filtroEstadoControl === 'AUSENTES'
+                  ? 'bg-red-600 text-white shadow-md shadow-red-950/40 ring-1 ring-red-400'
+                  : 'bg-slate-950 text-red-400 hover:bg-red-950/30 border border-red-900/30'
+              }`}
+            >
+              <X className="h-3.5 w-3.5" />
+              <span>Ausentes ({ausentesCount})</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setFiltroEstadoControl('JUSTIFICADOS')}
+              className={`px-3 py-1.5 rounded-lg font-bold transition-all flex items-center gap-1.5 ${
+                filtroEstadoControl === 'JUSTIFICADOS'
+                  ? 'bg-amber-600 text-white shadow-md shadow-amber-950/40 ring-1 ring-amber-400'
+                  : 'bg-slate-950 text-amber-400 hover:bg-amber-950/30 border border-amber-900/30'
+              }`}
+            >
+              <Award className="h-3.5 w-3.5" />
+              <span>Justificados ({justificadosCount})</span>
+            </button>
+          </div>
+          <span className="text-[11px] text-slate-500 hidden sm:inline">
+            Mostrando {personalFiltrado.length} de {personal.length} personas
+          </span>
         </div>
+
+        {/* Tabla o mensaje de completado */}
+        {personalFiltrado.length === 0 ? (
+          <div className="bg-slate-900/40 border border-slate-800/80 rounded-2xl p-8 text-center space-y-3 shadow-lg">
+            <div className="h-12 w-12 rounded-full bg-emerald-500/10 text-emerald-400 flex items-center justify-center mx-auto border border-emerald-500/20">
+              <CheckCircle2 className="h-6 w-6" />
+            </div>
+            <h4 className="text-sm font-bold text-slate-200">
+              {filtroEstadoControl === 'PENDIENTES'
+                ? '¡Pase de lista completado!'
+                : `No hay personas en estado ${filtroEstadoControl}`}
+            </h4>
+            <p className="text-xs text-slate-400 max-w-md mx-auto">
+              {filtroEstadoControl === 'PENDIENTES'
+                ? 'Todos los convocados de esta fecha ya han sido marcados con asistencia, ausencia o justificación. Puedes ver la plantilla completa en "Ver Todos" o guardar el control diario.'
+                : 'Selecciona otra pestaña o fecha para ver los registros correspondientes.'}
+            </p>
+            <button
+              type="button"
+              onClick={() => setFiltroEstadoControl('TODOS')}
+              className="px-4 py-2 bg-slate-800 hover:bg-slate-750 text-slate-200 rounded-xl text-xs font-bold transition-all border border-slate-700 inline-flex items-center gap-1.5"
+            >
+              <RefreshCw className="h-3.5 w-3.5" />
+              <span>Ver Todos ({personal.length})</span>
+            </button>
+          </div>
+        ) : (
+          <div className="bg-slate-900/50 backdrop-blur-md border border-slate-800/80 rounded-2xl overflow-x-auto shadow-xl">
+            <table className="w-full text-xs text-left min-w-[780px]">
+              <thead className="bg-slate-950 text-slate-300 font-bold border-b border-slate-800">
+                <tr>
+                  <th className="p-4">Nombre y Apellidos</th>
+                  <th className="p-4">Rol / Tipo</th>
+                  <th className="p-4">Teléfono</th>
+                  <th className="p-4">¿Asistencia / Estado?</th>
+                  <th className="p-4">Evaluación de Desempeño (RN-09)</th>
+                  <th className="p-4">Observaciones / Incidencias</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-850">
+                {personalFiltrado.map(p => {
+                  const estadoActual = p.estadoActual;
+                  const evalVal = p.evalVal;
+                  const obsVal = p.obsVal;
+
+                  return (
+                    <tr key={p.id} className="hover:bg-slate-950/30 text-slate-300 transition-colors">
+                      <td className="p-4 font-semibold text-slate-200">
+                        <div>{p.nombre}</div>
+                        <span className="text-[10px] text-slate-500 font-normal">{p.cargo || p.area || 'UHO'}</span>
+                      </td>
+                      <td className="p-4">
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${p.tipo === 'OBRERO' ? 'bg-blue-950 text-blue-400 border border-blue-800/40' : 'bg-green-950 text-green-400 border border-green-800/40'}`}>
+                          {p.tipo}
+                        </span>
+                      </td>
+                      <td className="p-4 text-slate-400 font-mono">{p.celular || p.telefono || 'N/A'}</td>
+                      
+                      {/* Botones de acción de asistencia intuitiva */}
+                      <td className="p-4">
+                        <div className="space-y-1.5">
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => handleSetEstadoAsistencia(fechaControl, p.id, estadoActual === 'PRESENTE' ? 'PENDIENTE' : 'PRESENTE')}
+                              className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1 ${
+                                estadoActual === 'PRESENTE'
+                                  ? 'bg-emerald-600 text-white shadow-md shadow-emerald-950/60 ring-2 ring-emerald-400'
+                                  : 'bg-slate-900 text-slate-400 hover:text-emerald-400 hover:bg-emerald-950/30 border border-slate-800'
+                              }`}
+                              title="Marcar como presente"
+                            >
+                              <Check className="h-3.5 w-3.5" />
+                              <span>Presente</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => handleSetEstadoAsistencia(fechaControl, p.id, estadoActual === 'AUSENTE' ? 'PENDIENTE' : 'AUSENTE')}
+                              className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1 ${
+                                estadoActual === 'AUSENTE'
+                                  ? 'bg-red-600 text-white shadow-md shadow-red-950/60 ring-2 ring-red-400'
+                                  : 'bg-slate-900 text-slate-400 hover:text-red-400 hover:bg-red-950/30 border border-slate-800'
+                              }`}
+                              title="Marcar como ausente injustificado"
+                            >
+                              <X className="h-3.5 w-3.5" />
+                              <span>Ausente</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => handleSetEstadoAsistencia(fechaControl, p.id, estadoActual === 'JUSTIFICADO' ? 'PENDIENTE' : 'JUSTIFICADO')}
+                              className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1 ${
+                                estadoActual === 'JUSTIFICADO'
+                                  ? 'bg-amber-600 text-white shadow-md shadow-amber-950/60 ring-2 ring-amber-400'
+                                  : 'bg-slate-900 text-slate-400 hover:text-amber-400 hover:bg-amber-950/30 border border-slate-800'
+                              }`}
+                              title="Marcar como ausencia justificada / licencia médica"
+                            >
+                              <Award className="h-3.5 w-3.5" />
+                              <span>Justificado</span>
+                            </button>
+                          </div>
+
+                          {/* Indicador de estado */}
+                          <div>
+                            {estadoActual === 'PRESENTE' && (
+                              <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-400 bg-emerald-950/60 px-2 py-0.5 rounded-full border border-emerald-800/40">
+                                <CheckCircle2 className="h-3 w-3" /> Asistencia Confirmada
+                              </span>
+                            )}
+                            {estadoActual === 'AUSENTE' && (
+                              <span className="inline-flex items-center gap-1 text-[10px] font-bold text-red-400 bg-red-950/60 px-2 py-0.5 rounded-full border border-red-800/40">
+                                <AlertTriangle className="h-3 w-3" /> Ausencia Registrada
+                              </span>
+                            )}
+                            {estadoActual === 'JUSTIFICADO' && (
+                              <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-400 bg-amber-950/60 px-2 py-0.5 rounded-full border border-amber-800/40">
+                                <Award className="h-3 w-3" /> Permiso / Justificación
+                              </span>
+                            )}
+                            {estadoActual === 'PENDIENTE' && (
+                              <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-slate-500 bg-slate-950/60 px-2 py-0.5 rounded-full border border-slate-800">
+                                <Clock className="h-3 w-3" /> Pendiente de pase de lista
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </td>
+
+                      {/* Calificación de Desempeño (RN-09) */}
+                      <td className="p-4">
+                        {estadoActual === 'PRESENTE' ? (
+                          <div className="space-y-1">
+                            <select 
+                              value={evalVal || 'B'}
+                              onChange={(e) => handleUpdateEvaluacion(fechaControl, p.id, e.target.value)}
+                              className="bg-slate-950 border border-emerald-600/40 rounded-lg px-2.5 py-1 text-xs text-emerald-300 font-semibold focus:outline-none focus:border-emerald-500"
+                            >
+                              <option value="B">Bien (B) - Cumplimiento destacado</option>
+                              <option value="R">Regular (R) - Con incidencias leves</option>
+                              <option value="M">Mal (M) - Incumplimiento grave</option>
+                            </select>
+                            <div className="text-[10px] text-slate-500">Evaluación obligatoria según RN-09</div>
+                          </div>
+                        ) : estadoActual === 'JUSTIFICADO' ? (
+                          <span className="text-[11px] font-semibold text-amber-400/90 italic px-2.5 py-1 bg-amber-950/30 rounded-lg border border-amber-800/40 inline-block">
+                            Exonerado (RN-09: Justificado)
+                          </span>
+                        ) : estadoActual === 'AUSENTE' ? (
+                          <span className="text-[11px] font-semibold text-red-400/80 italic px-2.5 py-1 bg-red-950/30 rounded-lg border border-red-800/40 inline-block">
+                            Sin eval (RN-09: Ausente)
+                          </span>
+                        ) : (
+                          <span className="text-[11px] font-semibold text-slate-500 italic px-2.5 py-1 bg-slate-950/40 rounded-lg border border-slate-850 inline-block">
+                            Sin registrar
+                          </span>
+                        )}
+                      </td>
+
+                      {/* Observaciones / Incidencias */}
+                      <td className="p-4">
+                        <input 
+                          type="text" 
+                          placeholder={estadoActual === 'JUSTIFICADO' ? "Motivo: Licencia médica, comisión..." : "Notas de asistencia o sustitución..."}
+                          value={obsVal}
+                          onChange={(e) => handleUpdateObservaciones(fechaControl, p.id, e.target.value)}
+                          className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-slate-700" 
+                        />
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     );
   };
