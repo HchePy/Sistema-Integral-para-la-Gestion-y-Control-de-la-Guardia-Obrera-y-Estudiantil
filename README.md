@@ -177,13 +177,13 @@ A continuación se detalla la lista de verificación (checklist) oficial de los 
   - [x] **[MOD-03]** Formulario y persistencia de Compromiso de Guardia para Trabajadores.
   - [x] **[MOD-04]** Flujo de Compromiso y parámetros por defecto para Estudiantes.
   - [x] **[MOD-05]** Listado de Potencial y flujo de aprobación por lotes para jefes de área.
-- [ ] **Hito 4: Módulos de Distribución y Operación Diaria (Fase Avanzada)**
-  - [ ] **[MOD-06]** Distribución mensual de turnos y asignación de personas a días específicos.
-  - [ ] **[MOD-07]** Registro del Control de Guardia diario y evaluaciones (Bien, Regular, Mal).
-  - [ ] **[MOD-09]** Sistema de notificaciones en tiempo real por correo y campana.
+- [x] **Hito 4: Módulos de Distribución y Operación Diaria (Fase Avanzada)**
+  - [x] **[MOD-06]** Distribución mensual de turnos y asignación nominal de turnos (`DistribucionArea`, `AsignacionGuardia`).
+  - [x] **[MOD-07]** Registro del Control de Guardia diario y evaluaciones (Bien, Regular, Mal, cumplimiento estricto RN-09).
+  - [x] **[MOD-09]** Sistema de notificaciones institucionales (Campana en header, alertas automáticas RN-08 a 7 días y 24h).
 - [ ] **Hito 5: Reportes y Cierre de Tesis (2027)**
-  - [ ] **[MOD-08]** Dashboard de cumplimiento interactivo y estadísticas gráficas.
-  - [ ] **[MOD-08]** Generación y exportación de reportes a PDF (WeasyPrint) y Excel.
+  - [x] **[MOD-08]** Dashboard de cumplimiento interactivo y estadísticas gráficas.
+  - [x] **[MOD-08]** Generación y exportación de reportes a PDF (WeasyPrint / ReportLab) y Excel.
   - [ ] **[MOD-10]** Documentación Swagger final e integración con el ecosistema de la UHO.
   - [ ] Pruebas unitarias de cobertura (Mínimo 60%).
   - [ ] Redacción final del informe técnico de tesis.

@@ -8,6 +8,7 @@ channels>=4.0.0
 channels-redis>=4.1.0
 openpyxl>=3.1.2
 weasyprint>=60.1
+reportlab>=5.0.0
 drf-spectacular>=0.26.2
 gunicorn>=20.1.0
 minio>=7.1.15
