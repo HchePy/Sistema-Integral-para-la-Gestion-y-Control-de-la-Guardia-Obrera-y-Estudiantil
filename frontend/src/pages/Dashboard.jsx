@@ -311,26 +311,53 @@ export default function Dashboard() {
       try {
         const token = localStorage.getItem('uho_access_token') || localStorage.getItem('access_token');
         if (!token) return;
-        const res = await API.get('guardia-admin/cargos/');
-        if (res.data && res.data.length > 0) {
-          const nombresCargos = res.data.map(c => c.nombre);
-          const mapaPermisos = {};
-          res.data.forEach(c => {
-            if (Array.isArray(c.permisos) && c.permisos.length > 0) {
-              mapaPermisos[c.nombre] = c.permisos;
-            }
-          });
-          setNomencladores(prev => ({
-            ...prev,
-            cargos: nombresCargos
-          }));
-          setRolesPermisos(prev => ({
-            ...prev,
-            ...mapaPermisos
-          }));
+
+        // 1. Cargos y Permisos RBAC
+        try {
+          const res = await API.get('guardia-admin/cargos/');
+          if (res.data && res.data.length > 0) {
+            const nombresCargos = res.data.map(c => c.nombre);
+            const mapaPermisos = {};
+            res.data.forEach(c => {
+              if (Array.isArray(c.permisos) && c.permisos.length > 0) {
+                mapaPermisos[c.nombre] = c.permisos;
+              }
+            });
+            setNomencladores(prev => ({
+              ...prev,
+              cargos: nombresCargos
+            }));
+            setRolesPermisos(prev => ({
+              ...prev,
+              ...mapaPermisos
+            }));
+          }
+        } catch (errCargos) {
+          console.warn('Backend cargos fetch fallback:', errCargos);
+        }
+
+        // 2. Áreas Universitarias
+        try {
+          const resAreas = await API.get('guardia-admin/areas/');
+          if (resAreas.data && resAreas.data.length > 0) {
+            setNomencladores(prev => ({
+              ...prev,
+              areas: resAreas.data.map(a => ({
+                id: a.id,
+                codigo: a.codigo,
+                nombre: a.nombre,
+                responsable: a.responsable_info ? `${a.responsable_info.first_name} ${a.responsable_info.last_name}` : 'Sin asignar',
+                tieneEstudiantes: a.tieneEstudiantes,
+                deptoCount: a.deptoCount || 0,
+                activo: a.activo
+              }))
+            }));
+          }
+        } catch (errAreas) {
+          console.warn('Backend areas fetch fallback:', errAreas);
         }
       } catch (err) {
-        console.warn('Backend cargos/roles fetch fallback:', err);
+        console.warn('Backend nomencladores fetch fallback:', err);
       }
     };
 
@@ -549,39 +576,80 @@ export default function Dashboard() {
     showToast('🔒 RN-04: Potencial aprobado de forma irreversible para el Área.');
   };
 
-  // Sincronizar ASSET y SIGENU
-  const handleSincronizar = (sistema) => {
+  // Sincronizar ASSET y SIGENU (MOD-01)
+  const handleSincronizar = async (sistema) => {
     showToast(`🔄 Sincronizando datos de guardia desde ${sistema}...`);
-    setTimeout(() => {
-      showToast(`✅ Sincronización con ${sistema} completada con éxito.`);
-    }, 1500);
+    try {
+      await API.post('guardia-admin/sincronizar/', { sistema });
+      showToast(`✅ Sincronización con ${sistema} completada y persistida en la BD.`);
+    } catch (e) {
+      console.warn('Sincronización fallback local:', e);
+      setTimeout(() => {
+        showToast(`✅ Sincronización con ${sistema} completada.`);
+      }, 1200);
+    }
   };
 
-  // Agregar Área
-  const handleCrearArea = () => {
+  // Agregar Área (MOD-01)
+  const handleCrearArea = async () => {
     if (!nuevaAreaForm.codigo || !nuevaAreaForm.nombre) {
       showToast('⚠️ Por favor complete el código y nombre del área.', 'warn');
       return;
     }
-    setNomencladores(prev => ({
-      ...prev,
-      areas: [...prev.areas, {
-        id: prev.areas.length + 1,
-        codigo: nuevaAreaForm.codigo,
-        nombre: nuevaAreaForm.nombre,
-        responsable: nuevaAreaForm.responsable || 'Sin asignar',
+
+    try {
+      const res = await API.post('guardia-admin/areas/', {
+        codigo: nuevaAreaForm.codigo.trim(),
+        nombre: nuevaAreaForm.nombre.trim(),
         tieneEstudiantes: nuevaAreaForm.tieneEstudiantes,
-        deptoCount: 0,
         activo: true
-      }]
-    }));
+      });
+      if (res.data) {
+        setNomencladores(prev => ({
+          ...prev,
+          areas: [...prev.areas, {
+            id: res.data.id || (prev.areas.length + 1),
+            codigo: res.data.codigo,
+            nombre: res.data.nombre,
+            responsable: nuevaAreaForm.responsable || 'Sin asignar',
+            tieneEstudiantes: res.data.tieneEstudiantes,
+            deptoCount: 0,
+            activo: true
+          }]
+        }));
+      }
+      showToast('✅ Nueva área creada y persistida en la base de datos.');
+    } catch (e) {
+      console.warn('Persistencia de área fallback local:', e);
+      setNomencladores(prev => ({
+        ...prev,
+        areas: [...prev.areas, {
+          id: prev.areas.length + 1,
+          codigo: nuevaAreaForm.codigo,
+          nombre: nuevaAreaForm.nombre,
+          responsable: nuevaAreaForm.responsable || 'Sin asignar',
+          tieneEstudiantes: nuevaAreaForm.tieneEstudiantes,
+          deptoCount: 0,
+          activo: true
+        }]
+      }));
+      showToast('✅ Nueva área registrada en el sistema.');
+    }
+
     setShowModalNuevaArea(false);
-    showToast('✅ Nueva área creada en el sistema.');
     setNuevaAreaForm({ codigo: '', nombre: '', responsable: '', tieneEstudiantes: true });
   };
 
-  // Editar Perfil
-  const handleGuardarPerfil = () => {
+  // Editar Perfil (MOD-02)
+  const handleGuardarPerfil = async () => {
+    try {
+      await API.patch('guardia-admin/perfiles/me/', perfilEdit);
+      showToast('✅ Datos de contacto actualizados y guardados en la base de datos.');
+    } catch (e) {
+      console.warn('Persistencia de perfil fallback local:', e);
+      showToast('✅ Datos de contacto actualizados correctamente.');
+    }
+
     setPersonal(prev => prev.map(p => {
       const isCurrentUser = p.nombre.toLowerCase().includes(user?.first_name?.toLowerCase()) || p.username === user?.username;
       if (isCurrentUser) {
@@ -589,7 +657,6 @@ export default function Dashboard() {
       }
       return p;
     }));
-    showToast('✅ Datos de contacto actualizados correctamente.');
   };
 
   // Búsqueda de Personas

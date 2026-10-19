@@ -160,6 +160,27 @@ class PerfilViewSet(viewsets.ModelViewSet):
         
         return super().update(request, *args, **kwargs)
 
+    @action(detail=False, methods=['get', 'patch'], url_path='me')
+    def me(self, request):
+        """
+        Consulta o actualiza datos personales y de contacto del perfil del usuario en sesión.
+        """
+        perfil = getattr(request.user, 'perfil', None)
+        if not perfil:
+            return Response({"detail": "Perfil no encontrado."}, status=status.HTTP_404_NOT_FOUND)
+
+        if request.method == 'PATCH':
+            allowed_fields = [
+                'telefono', 'celular', 'whatsapp', 'direccion', 'referencia',
+                'contactoNombre', 'contactoCelular', 'tipoPref', 'diaPref'
+            ]
+            for field in allowed_fields:
+                if field in request.data:
+                    setattr(perfil, field, request.data[field])
+            perfil.save()
+
+        return Response(PerfilSerializer(perfil).data, status=status.HTTP_200_OK)
+
 # --- VISTA DE SINCRONIZACIÓN DE REGISTROS SIMULADOS (ASSET / SIGENU) ---
 
 class SincronizarRegistrosView(APIView):
