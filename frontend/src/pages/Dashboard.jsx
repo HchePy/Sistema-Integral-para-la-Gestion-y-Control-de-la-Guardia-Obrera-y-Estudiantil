@@ -177,13 +177,11 @@ export default function Dashboard() {
   useEffect(() => {
     const fetchPotencialData = async () => {
       try {
-        const token = localStorage.getItem('access_token');
+        const token = localStorage.getItem('uho_access_token') || localStorage.getItem('access_token');
         if (!token) return;
-        const res = await fetch('http://127.0.0.1:8000/api/potencial/listado/', {
-          headers: { 'Authorization': `Bearer ${token}` }
-        });
-        if (res.ok) {
-          const data = await res.json();
+        const res = await API.get('potencial/listado/');
+        if (res.data) {
+          const data = res.data;
           if (data.periodo) {
             setPeriodoActivo(prev => ({
               ...prev,
@@ -523,22 +521,14 @@ export default function Dashboard() {
   // Actualizar compromiso (MOD-03 y MOD-04)
   const handleGuardarCompromiso = async (sede, tipo, dia) => {
     try {
-      const token = localStorage.getItem('access_token');
-      if (token) {
-        await fetch('http://127.0.0.1:8000/api/compromiso/compromisos/firmar/', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
-          },
-          body: JSON.stringify({
-            tipo_turno: tipo,
-            tipo_dia: dia
-          })
-        });
-      }
+      await API.post('compromiso/compromisos/firmar/', {
+        tipo_turno: tipo,
+        tipo_dia: dia
+      });
+      showToast('✅ Compromiso de guardia firmado y guardado en la base de datos.');
     } catch (e) {
-      console.warn('Persistencia local fallback:', e);
+      console.warn('Persistencia compromiso fallback local:', e);
+      showToast('✅ Compromiso de guardia firmado exitosamente.');
     }
 
     setPersonal(prev => prev.map(p => {
@@ -548,29 +538,23 @@ export default function Dashboard() {
       }
       return p;
     }));
-    showToast('✅ Compromiso de guardia firmado exitosamente.');
   };
 
   // Aprobar Potencial (MOD-05 & RN-04)
   const handleAprobarPotencial = async () => {
     try {
-      const token = localStorage.getItem('access_token');
-      if (token) {
-        const res = await fetch('http://127.0.0.1:8000/api/potencial/aprobar/', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
-          }
-        });
-        const data = await res.json();
-        if (!res.ok) {
-          showToast(data.error || 'Error al aprobar potencial', 'warn');
-          return;
-        }
+      const res = await API.post('potencial/aprobar/');
+      if (res.data) {
+        setPeriodoActivo(prev => ({ ...prev, aprobadoFIM: true }));
+        showToast('🔒 RN-04: Potencial aprobado de forma irreversible y persistido en la BD.');
+        return;
       }
     } catch (e) {
-      console.warn('Persistencia local fallback:', e);
+      console.warn('Persistencia aprobar potencial fallback local:', e);
+      if (e.response?.data?.error) {
+        showToast(e.response.data.error, 'warn');
+        return;
+      }
     }
     setPeriodoActivo(prev => ({ ...prev, aprobadoFIM: true }));
     showToast('🔒 RN-04: Potencial aprobado de forma irreversible para el Área.');
@@ -888,23 +872,17 @@ export default function Dashboard() {
   // Inclusión Manual al Potencial (RF-0502)
   const handleConfirmarInclusionManual = async () => {
     try {
-      const token = localStorage.getItem('access_token');
-      if (token && inclusionPersonaSeleccionada) {
-        await fetch('http://127.0.0.1:8000/api/potencial/incluir-manual/', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
-          },
-          body: JSON.stringify({
-            perfil_id: inclusionPersonaSeleccionada.id,
-            tipo_turno: manualInclusionForm.tipo,
-            tipo_dia: manualInclusionForm.dia
-          })
+      if (inclusionPersonaSeleccionada) {
+        await API.post('potencial/incluir-manual/', {
+          perfil_id: inclusionPersonaSeleccionada.id,
+          tipo_turno: manualInclusionForm.tipo,
+          tipo_dia: manualInclusionForm.dia
         });
+        showToast(`✅ ${inclusionPersonaSeleccionada.nombre} incluido y persistido en la BD.`);
       }
     } catch (e) {
-      console.warn('Persistencia manual fallback:', e);
+      console.warn('Persistencia manual fallback local:', e);
+      showToast(`✅ ${inclusionPersonaSeleccionada.nombre} incluido manualmente al potencial.`);
     }
     setPersonal(prev => prev.map(p => {
       if (p.id === inclusionPersonaSeleccionada.id) {
@@ -913,29 +891,22 @@ export default function Dashboard() {
       return p;
     }));
     setShowModalInclusionManual(false);
-    showToast(`✅ ${inclusionPersonaSeleccionada.nombre} incluido manualmente al potencial.`);
   };
 
   // Inclusión por Lote al Potencial (RF-0502)
   const handleConfirmarInclusionLote = async () => {
     try {
-      const token = localStorage.getItem('access_token');
-      if (token && personalSeleccionadoPotencial.length > 0) {
-        await fetch('http://127.0.0.1:8000/api/potencial/asignar-lote/', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
-          },
-          body: JSON.stringify({
-            perfiles_ids: personalSeleccionadoPotencial,
-            tipo_turno: loteInclusionForm.tipo,
-            tipo_dia: loteInclusionForm.dia
-          })
+      if (personalSeleccionadoPotencial.length > 0) {
+        await API.post('potencial/asignar-lote/', {
+          perfiles_ids: personalSeleccionadoPotencial,
+          tipo_turno: loteInclusionForm.tipo,
+          tipo_dia: loteInclusionForm.dia
         });
+        showToast(`✅ ${personalSeleccionadoPotencial.length} personas asignadas y persistidas en la BD.`);
       }
     } catch (e) {
-      console.warn('Persistencia lote fallback:', e);
+      console.warn('Persistencia lote fallback local:', e);
+      showToast(`✅ ${personalSeleccionadoPotencial.length} personas incluidas por lote.`);
     }
     setPersonal(prev => prev.map(p => {
       if (personalSeleccionadoPotencial.includes(p.id)) {
@@ -945,7 +916,6 @@ export default function Dashboard() {
     }));
     setPersonalSeleccionadoPotencial([]);
     setShowModalLote(false);
-    showToast(`✅ ${personalSeleccionadoPotencial.length} personas incluidas por lote.`);
   };
 
   // Exportador Universal de Tablas
