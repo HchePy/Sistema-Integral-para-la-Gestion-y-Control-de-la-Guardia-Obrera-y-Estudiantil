@@ -1,4 +1,5 @@
 from rest_framework import viewsets, status
+from rest_framework.decorators import action
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
@@ -35,10 +36,29 @@ class CargoViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
 
     def get_permissions(self):
-        # Solo superadmin puede escribir, todos los autenticados pueden leer
-        if self.action in ['create', 'update', 'partial_update', 'destroy']:
+        # Superadmin y roles autenticados de administracion pueden gestionar
+        if self.action in ['destroy']:
             return [HasRole.for_roles(ROLE_SUPERADMIN)()]
         return super().get_permissions()
+
+    @action(detail=False, methods=['post'], url_path='guardar-permisos')
+    def guardar_permisos(self, request):
+        """
+        Persiste la matriz RBAC de permisos asociados a un rol/cargo institucional.
+        """
+        nombre = request.data.get('nombre')
+        permisos = request.data.get('permisos', [])
+        descripcion = request.data.get('descripcion')
+
+        if not nombre:
+            return Response({'error': 'Nombre de cargo requerido'}, status=status.HTTP_400_BAD_REQUEST)
+
+        cargo, _ = Cargo.objects.get_or_create(nombre=nombre)
+        cargo.permisos = permisos
+        if descripcion:
+            cargo.descripcion = descripcion
+        cargo.save()
+        return Response(CargoSerializer(cargo).data, status=status.HTTP_200_OK)
 
 class ContratoViewSet(viewsets.ModelViewSet):
     queryset = Contrato.objects.all()

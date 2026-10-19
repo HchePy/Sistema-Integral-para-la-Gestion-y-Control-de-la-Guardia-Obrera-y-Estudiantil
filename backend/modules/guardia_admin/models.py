@@ -7,6 +7,8 @@ class Cargo(AuditableModel):
     Representa los cargos laborales o estudiantiles del personal.
     """
     nombre = models.CharField(max_length=150, unique=True, verbose_name="Nombre del Cargo")
+    descripcion = models.CharField(max_length=255, blank=True, null=True, verbose_name="Descripción")
+    permisos = models.JSONField(default=list, blank=True, verbose_name="Permisos RBAC Asignados")
     activo = models.BooleanField(default=True, verbose_name="Activo")
 
     class Meta:

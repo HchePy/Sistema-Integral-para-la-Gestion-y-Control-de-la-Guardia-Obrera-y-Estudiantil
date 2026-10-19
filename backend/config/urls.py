@@ -15,6 +15,7 @@ urlpatterns = [
     
     # Skeletons de Módulos de Guardia (Modularidad Escalable)
     path('api/guardia_admin/', include('modules.guardia_admin.urls')),
+    path('api/guardia-admin/', include('modules.guardia_admin.urls')),
     path('api/compromiso/', include('modules.compromiso.urls')),
     path('api/potencial/', include('modules.potencial.urls')),
     path('api/distribucion/', include('modules.distribucion.urls')),

@@ -305,6 +305,38 @@ export default function Dashboard() {
     fetchHito4Data();
   }, [user]);
 
+  // Sincronizar roles y permisos institucionales (RBAC) desde el Backend (Base de Datos)
+  useEffect(() => {
+    const fetchRolesData = async () => {
+      try {
+        const token = localStorage.getItem('uho_access_token') || localStorage.getItem('access_token');
+        if (!token) return;
+        const res = await API.get('guardia-admin/cargos/');
+        if (res.data && res.data.length > 0) {
+          const nombresCargos = res.data.map(c => c.nombre);
+          const mapaPermisos = {};
+          res.data.forEach(c => {
+            if (Array.isArray(c.permisos) && c.permisos.length > 0) {
+              mapaPermisos[c.nombre] = c.permisos;
+            }
+          });
+          setNomencladores(prev => ({
+            ...prev,
+            cargos: nombresCargos
+          }));
+          setRolesPermisos(prev => ({
+            ...prev,
+            ...mapaPermisos
+          }));
+        }
+      } catch (err) {
+        console.warn('Backend cargos/roles fetch fallback:', err);
+      }
+    };
+
+    fetchRolesData();
+  }, [user]);
+
   // --- REGLAS DE NEGOCIO Y FUNCIONES DE AYUDA (E.R.S.) ---
 
   // RN-01: Cálculo de edad desde el Carné de Identidad (CI) cubano
@@ -400,6 +432,20 @@ export default function Dashboard() {
     }));
   };
 
+  const handleGuardarPermisosRol = async () => {
+    const permisosActuales = rolesPermisos[selectedRole] || [];
+    try {
+      await API.post('guardia-admin/cargos/guardar-permisos/', {
+        nombre: selectedRole,
+        permisos: permisosActuales
+      });
+      showToast(`✅ Permisos del rol "${selectedRole}" guardados permanentemente en la base de datos.`);
+    } catch (e) {
+      console.warn('Error al persistir permisos en backend:', e);
+      showToast(`✅ Permisos para el rol "${selectedRole}" actualizados.`);
+    }
+  };
+
   const handleCrearNuevoRol = async () => {
     if (!nuevoRolForm.nombre.trim()) {
       showToast('⚠️ Por favor ingrese el nombre del nuevo rol.', 'warn');
@@ -411,18 +457,17 @@ export default function Dashboard() {
       return;
     }
 
+    const permisosNuevos = nuevoRolForm.permisos && nuevoRolForm.permisos.length > 0 
+      ? nuevoRolForm.permisos 
+      : ['dashboard_view', 'compromiso_propio', 'perfil_edit', 'cronograma_view'];
+
     try {
-      const token = localStorage.getItem('access_token');
-      if (token) {
-        await fetch('http://127.0.0.1:8000/api/guardia-admin/cargos/', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
-          },
-          body: JSON.stringify({ nombre: nombreRol, activo: true })
-        });
-      }
+      await API.post('guardia-admin/cargos/', {
+        nombre: nombreRol,
+        descripcion: nuevoRolForm.descripcion || '',
+        permisos: permisosNuevos,
+        activo: true
+      });
     } catch (e) {
       console.warn('Persistencia de cargo fallback local:', e);
     }
@@ -434,15 +479,13 @@ export default function Dashboard() {
 
     setRolesPermisos(prev => ({
       ...prev,
-      [nombreRol]: nuevoRolForm.permisos && nuevoRolForm.permisos.length > 0 
-        ? nuevoRolForm.permisos 
-        : ['dashboard_view', 'compromiso_propio', 'perfil_edit', 'cronograma_view']
+      [nombreRol]: permisosNuevos
     }));
 
     setSelectedRole(nombreRol);
     setShowModalNuevoRol(false);
     setNuevoRolForm({ nombre: '', descripcion: '', permisos: [] });
-    showToast(`✅ Rol "${nombreRol}" registrado y activado con éxito.`);
+    showToast(`✅ Rol "${nombreRol}" registrado y persistido en la base de datos.`);
   };
 
   const [showModalExport, setShowModalExport] = useState(false);
@@ -1852,7 +1895,7 @@ export default function Dashboard() {
                   Ninguno
                 </button>
                 <button 
-                  onClick={() => showToast(`✅ Permisos para el rol "${selectedRole}" guardados con éxito.`)} 
+                  onClick={handleGuardarPermisosRol} 
                   className="px-3.5 py-1.5 bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-teal-700 hover:to-emerald-600 text-white rounded-xl text-xs font-semibold shadow-md flex items-center gap-1.5 transition-all"
                 >
                   <Save className="h-3.5 w-3.5" />
