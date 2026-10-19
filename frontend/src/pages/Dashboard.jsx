@@ -24,72 +24,61 @@ export default function Dashboard() {
     setTimeout(() => setToast(prev => ({ ...prev, show: false })), 3500);
   };
 
-  // --- ESTADO GLOBAL SIMULADO DE DATOS (Sincronizado) ---
+  // --- ESTADO GLOBAL DINÁMICO DE DATOS (Conectado a Base de Datos) ---
   
-  // 1. Nomencladores
+  // 1. Nomencladores Institucionales (Cargados desde /api/guardia-admin/)
   const [nomencladores, setNomencladores] = useState({
-    areas: [
-      { id: 1, codigo: 'FAC-INF', nombre: 'Facultad de Informática y Matemática', responsable: 'Dra. Elena Rost', tieneEstudiantes: true, deptoCount: 4, activo: true },
-      { id: 2, codigo: 'FAC-ING', nombre: 'Facultad de Ingeniería', responsable: 'Dr. Julio Gómez', tieneEstudiantes: true, deptoCount: 5, activo: true },
-      { id: 3, codigo: 'DIR-INF', nombre: 'Dirección de Informatización', responsable: 'Ing. Carlos Leyva', tieneEstudiantes: false, deptoCount: 2, activo: true },
-      { id: 4, codigo: 'FAC-MED', nombre: 'Facultad de Ciencias Médicas', responsable: 'Dr. Alejandro Silva', tieneEstudiantes: true, deptoCount: 6, activo: true }
-    ],
-    departamentos: [
-      { id: 1, codigo: 'DEP-SIST', nombre: 'Depto. de Sistemas de Información', responsable: 'Lic. Ramón Valdés', areaPadre: 'Facultad de Informática y Matemática', activo: true },
-      { id: 2, codigo: 'DEP-RED', nombre: 'Depto. de Conectividad y Redes', responsable: 'Ing. Roberto Pérez', areaPadre: 'Facultad de Informática y Matemática', activo: true },
-      { id: 3, codigo: 'DEP-MEC', nombre: 'Depto. de Ingeniería Mecánica', responsable: 'MSc. Juan López', areaPadre: 'Facultad de Ingeniería', activo: true },
-      { id: 4, codigo: 'DEP-TEL', nombre: 'Depto. de Telecomunicaciones', responsable: 'Ing. Laura Fuentes', areaPadre: 'Dirección de Informatización', activo: true }
-    ],
-    sedes: [
-      { id: 1, nombre: 'Sede Oscar Lucero Moya', direccion: 'Ave. de los Libertadores, Holguín', minObreras: 3, minEstudiantiles: 4 },
-      { id: 2, nombre: 'Sede Manuel Aguilera', direccion: 'Carretera a Guardalavaca, Holguín', minObreras: 2, minEstudiantiles: 2 },
-      { id: 3, nombre: 'Sede Celia Sánchez Manduley', direccion: 'Ave. XX Aniversario, Holguín', minObreras: 2, minEstudiantiles: 2 }
-    ],
-    cargos: ['Decano', 'Profesor Auxiliar', 'Especialista en Redes', 'Técnico de Soporte', 'Secretaria', 'Estudiante de 4to Año'],
-    contratos: ['Fijo Indeterminado', 'Determinado', 'Adiestrado', 'Estudiante Activo']
+    areas: [],
+    departamentos: [],
+    sedes: [],
+    cargos: [],
+    contratos: []
   });
 
-  // 2. Personal y Potencial (Lista Maestra)
-  const [personal, setPersonal] = useState([
-    { id: 1, ci: '78041523456', nombre: 'José Rodríguez Pérez', sexo: 'M', tipo: 'OBRERO', contrato: 'Fijo Indeterminado', area: 'Facultad de Informática y Matemática', depto: 'Depto. de Sistemas de Información', cargo: 'Profesor Auxiliar', comprometido: true, sedePref: 'Sede Oscar Lucero Moya', tipoPref: 'Nocturna', diaPref: 'Semana', telefono: '24461234', celular: '52345678', whatsapp: '52345678', direccion: 'Calle Martí #45, Holguín', referencia: 'Frente al Parque Calixto García', contactoNombre: 'Luis Rodríguez', contactoCelular: '53987654' },
-    { id: 2, ci: '85091212345', nombre: 'María García López', sexo: 'F', tipo: 'OBRERO', contrato: 'Fijo Indeterminado', area: 'Facultad de Informática y Matemática', depto: 'Depto. de Sistemas de Información', cargo: 'Profesora Auxiliar', comprometido: false, sedePref: 'Sede Oscar Lucero Moya', tipoPref: 'Diurna', diaPref: 'Semana', telefono: '24483322', celular: '53229988', whatsapp: '53229988', direccion: 'Calle Frexes #123, Holguín', referencia: 'Esquina de la Iglesia', contactoNombre: 'Pedro García', contactoCelular: '54221100' },
-    { id: 3, ci: '92113045678', nombre: 'Roberto Pérez Silva', sexo: 'M', tipo: 'OBRERO', contrato: 'Fijo Indeterminado', area: 'Facultad de Informática y Matemática', depto: 'Depto. de Conectividad y Redes', cargo: 'Especialista en Redes', comprometido: true, sedePref: 'Sede Oscar Lucero Moya', tipoPref: 'Nocturna', diaPref: 'Fin de Semana', telefono: '24419988', celular: '52119900', whatsapp: '52119900', direccion: 'Calle Maceo #89, Holguín', referencia: 'Cerca del Hospital Clínico Quirúrgico', contactoNombre: 'Ana Pérez', contactoCelular: '53118800' },
-    { id: 4, ci: '03102434567', nombre: 'Carlos Gómez Batista', sexo: 'M', tipo: 'ESTUDIANTE', contrato: 'Estudiante Activo', area: 'Facultad de Informática y Matemática', depto: 'Depto. de Sistemas de Información', cargo: 'Estudiante de 4to Año', comprometido: true, sedePref: 'Sede Manuel Aguilera', tipoPref: 'Diurna', diaPref: 'Fin de Semana', telefono: '', celular: '55667788', whatsapp: '55667788', direccion: 'Residencia Estudiantil UHO, Holguín', referencia: 'Edificio B, Apto 4', contactoNombre: 'Padre Gómez', contactoCelular: '52009988' },
-    { id: 5, ci: '04081256789', nombre: 'Ana Pérez Vidal', sexo: 'F', tipo: 'ESTUDIANTE', contrato: 'Estudiante Activo', area: 'Facultad de Informática y Matemática', depto: 'Depto. de Sistemas de Información', cargo: 'Estudiante de 4to Año', comprometido: false, sedePref: 'Sede Oscar Lucero Moya', tipoPref: 'Diurna', diaPref: 'Semana', telefono: '', celular: '54433221', whatsapp: '54433221', direccion: 'Calle Cables #210, Holguín', referencia: 'Frente al estadio', contactoNombre: 'Madre Pérez', contactoCelular: '53998877' }
-  ]);
+  // 2. Personal y Potencial (Cargado desde /api/guardia-admin/perfiles/ y /api/potencial/)
+  const [personal, setPersonal] = useState([]);
 
-  // 3. Distribución de Guardia
-  const [distribuciones, setDistribuciones] = useState([
-    { id: 1, area: 'Facultad de Informática y Matemática', depto: 'Depto. de Sistemas de Información', sede: 'Sede Oscar Lucero Moya', tipo: 'Diurna', dias: [7, 14, 21, 28], cant: 2 },
-    { id: 2, area: 'Facultad de Informática y Matemática', depto: 'Depto. de Sistemas de Información', sede: 'Sede Oscar Lucero Moya', tipo: 'Nocturna', dias: [10, 24], cant: 3 },
-    { id: 3, area: 'Facultad de Ingeniería', depto: 'Depto. de Ingeniería Mecánica', sede: 'Sede Manuel Aguilera', tipo: 'Diurna', dias: [3, 17, 31], cant: 2 }
-  ]);
+  // 3. Perfil del Usuario Autenticado en Sesión (Cargado desde /api/guardia-admin/perfiles/me/)
+  const [perfilUsuario, setPerfilUsuario] = useState({
+    cargando: true,
+    id: null,
+    ci: '',
+    nombre: '',
+    username: '',
+    sexo: 'M',
+    tipo: 'OBRERO',
+    contrato: '',
+    area: '',
+    depto: '',
+    cargo: '',
+    telefono: '',
+    celular: '',
+    whatsapp: '',
+    direccion: '',
+    referencia: '',
+    contactoNombre: '',
+    contactoCelular: ''
+  });
 
-  // 4. Asignaciones específicas de Guardia
-  const [asignaciones, setAsignaciones] = useState([
-    { fecha: '2026-06-07', personaId: 1, tipo: 'OBRERO', sede: 'Sede Oscar Lucero Moya', tipoGuardia: 'Diurna', asistio: true, evaluacion: 'B', observaciones: 'Cumplió correctamente' },
-    { fecha: '2026-06-10', personaId: 3, tipo: 'OBRERO', sede: 'Sede Oscar Lucero Moya', tipoGuardia: 'Nocturna', asistio: true, evaluacion: 'R', observaciones: 'Llegó 15 min tarde' },
-    { fecha: '2026-06-14', personaId: 1, tipo: 'OBRERO', sede: 'Sede Oscar Lucero Moya', tipoGuardia: 'Diurna', asistio: false, evaluacion: '', observaciones: 'Ausencia injustificada' },
-    { fecha: '2026-06-24', personaId: 4, tipo: 'ESTUDIANTE', sede: 'Sede Oscar Lucero Moya', tipoGuardia: 'Nocturna', asistio: true, evaluacion: 'B', observaciones: '' }
-  ]);
+  // 4. Distribución de Guardia (Cargada desde /api/distribucion/areas/)
+  const [distribuciones, setDistribuciones] = useState([]);
 
-  // 5. Período de Guardia Actual y Configuración General
+  // 5. Asignaciones específicas de Guardia (Cargadas desde /api/distribucion/asignaciones/)
+  const [asignaciones, setAsignaciones] = useState([]);
+
+  // 6. Período de Guardia Actual (Cargado desde /api/potencial/periodos/)
   const [periodoActivo, setPeriodoActivo] = useState({
-    nombre: 'Junio — Julio 2026',
-    compromisoInicio: '2026-06-01',
-    compromisoFin: '2026-06-15',
-    aprobacionInicio: '2026-06-16',
-    aprobacionFin: '2026-06-25',
+    id: null,
+    nombre: 'Cargando período...',
+    compromisoInicio: '',
+    compromisoFin: '',
+    aprobacionInicio: '',
+    aprobacionFin: '',
     aprobadoFIM: false
   });
 
-  // 6. Notificaciones en Campana
-  const [notificaciones, setNotificaciones] = useState([
-    { id: 1, texto: '⏰ El período de compromiso cierra el 15 de Junio.', tiempo: 'Hace 1 hora', leido: false },
-    { id: 2, texto: '📋 El potencial del Depto. Sistemas está listo para aprobación.', tiempo: 'Hace 3 horas', leido: false },
-    { id: 3, texto: '✅ La guardia del día 07/06/2026 fue registrada correctamente.', tiempo: 'Ayer', leido: true }
-  ]);
-
+  // 7. Notificaciones en Campana (Cargadas desde /api/control/notificaciones/)
+  const [notificaciones, setNotificaciones] = useState([]);
   const [showNotifPanel, setShowNotifPanel] = useState(false);
 
   // Estados Hito 4: MOD-06 Distribución y MOD-07 Control
@@ -103,43 +92,28 @@ export default function Dashboard() {
   });
   const [fechaControl, setFechaControl] = useState('2026-06-07');
 
-  // MOD-08: Estadísticas y Dashboard de Cumplimiento
+  // MOD-08: Estadísticas y Dashboard de Cumplimiento (Cargado desde /api/control/historial/)
   const [datosCumplimiento, setDatosCumplimiento] = useState({
     resumen: {
-      total_programadas: 48,
-      asistencias: 44,
-      ausencias: 4,
-      porcentaje_cumplimiento: 91.7,
-      tasa_efectividad: 'Alta'
+      total_programadas: 0,
+      asistencias: 0,
+      ausencias: 0,
+      porcentaje_cumplimiento: 0,
+      tasa_efectividad: 'Pendiente'
     },
     evaluaciones: {
-      bien: 38,
-      regular: 6,
+      bien: 0,
+      regular: 0,
       mal: 0,
-      sin_evaluacion: 4
+      sin_evaluacion: 0
     },
-    por_area: [
-      { area: 'Facultad de Informática y Matemática', total: 20, asistencias: 19, ausencias: 1, cumplimiento: 95.0 },
-      { area: 'Facultad de Ingeniería', total: 16, asistencias: 14, ausencias: 2, cumplimiento: 87.5 },
-      { area: 'Dirección de Informatización', total: 12, asistencias: 11, ausencias: 1, cumplimiento: 91.7 }
-    ],
-    por_sede: [
-      { sede: 'Sede Oscar Lucero Moya', total: 24, asistencias: 22, ausencias: 2, cumplimiento: 91.7 },
-      { sede: 'Sede Manuel Aguilera', total: 14, asistencias: 13, ausencias: 1, cumplimiento: 92.9 },
-      { sede: 'Sede Celia Sánchez Manduley', total: 10, asistencias: 9, ausencias: 1, cumplimiento: 90.0 }
-    ],
+    por_area: [],
+    por_sede: [],
     por_regimen: {
-      obreros: { total: 32, asistencias: 30, ausencias: 2, cumplimiento: 93.8 },
-      estudiantes: { total: 16, asistencias: 14, ausencias: 2, cumplimiento: 87.5 }
+      obreros: { total: 0, asistencias: 0, ausencias: 0, cumplimiento: 0 },
+      estudiantes: { total: 0, asistencias: 0, ausencias: 0, cumplimiento: 0 }
     },
-    tendencia_mensual: [
-      { mes: 'Enero', cumplimiento: 94 },
-      { mes: 'Febrero', cumplimiento: 89 },
-      { mes: 'Marzo', cumplimiento: 92 },
-      { mes: 'Abril', cumplimiento: 96 },
-      { mes: 'Mayo', cumplimiento: 90 },
-      { mes: 'Junio', cumplimiento: 92 }
-    ]
+    tendencia_mensual: []
   });
 
   // --- FORMULARIOS / ESTADOS LOCALES DE EDICIÓN ---
@@ -173,242 +147,281 @@ export default function Dashboard() {
     }
   }, [user]);
 
-  // Sincronizar listado de potencial y período de guardia desde el Backend (Hito 3)
+  // Sincronizar todos los datos institucionales desde el Backend (Django REST / SQLite)
   useEffect(() => {
-    const fetchPotencialData = async () => {
+    const fetchAllData = async () => {
+      const token = localStorage.getItem('uho_access_token') || localStorage.getItem('access_token');
+      if (!token) return;
+
+      // 1. Perfil del Usuario en Sesión (ASSET / SIGENU)
       try {
-        const token = localStorage.getItem('uho_access_token') || localStorage.getItem('access_token');
-        if (!token) return;
-        const res = await API.get('potencial/listado/');
-        if (res.data) {
-          const data = res.data;
-          if (data.periodo) {
-            setPeriodoActivo(prev => ({
-              ...prev,
-              nombre: data.periodo.nombre || prev.nombre,
-              compromisoInicio: data.periodo.inicio_compromiso || prev.compromisoInicio,
-              compromisoFin: data.periodo.fin_compromiso || prev.compromisoFin,
-              aprobacionInicio: data.periodo.inicio_aprobacion || prev.aprobacionInicio,
-              aprobacionFin: data.periodo.fin_aprobacion || prev.aprobacionFin,
-              aprobadoFIM: data.aprobado || false
-            }));
-          }
-          if (data.resultados && data.resultados.length > 0) {
-            setPersonal(data.resultados.map(r => ({
-              id: r.id,
-              ci: r.ci_enmascarado || r.ci,
-              nombre: r.nombre_completo,
-              sexo: r.sexo,
-              tipo: r.tipo,
-              contrato: r.contrato_nombre,
-              area: r.area_nombre,
-              depto: r.depto_nombre,
-              cargo: r.cargo_nombre,
-              comprometido: r.comprometido,
-              sedePref: r.sedePref_nombre || 'Sede Oscar Lucero Moya',
-              tipoPref: r.tipoPref || 'Diurna',
-              diaPref: r.diaPref || 'Semana',
-              telefono: r.telefono || '',
-              celular: r.celular || '',
-              whatsapp: r.whatsapp || '',
-              direccion: r.direccion || '',
-              referencia: r.referencia || '',
-              contactoNombre: r.contactoNombre || '',
-              contactoCelular: r.contactoCelular || ''
-            })));
+        const resMe = await API.get('guardia-admin/perfiles/me/');
+        if (resMe.data) {
+          const d = resMe.data;
+          const u = d.usuario_info || {};
+          const fullName = (u.first_name && u.last_name) ? `${u.first_name} ${u.last_name}` : (u.username || user?.username || 'Usuario');
+          const pData = {
+            cargando: false,
+            id: d.id,
+            ci: d.ci || '',
+            nombre: fullName,
+            username: u.username || user?.username || '',
+            sexo: d.sexo || 'M',
+            tipo: d.tipo || (user?.role === 'ESTUDIANTE' ? 'ESTUDIANTE' : 'OBRERO'),
+            contrato: d.contrato_info?.nombre || 'Fijo Indeterminado',
+            area: d.area_info?.nombre || 'Facultad de Informática y Matemática',
+            depto: d.depto_info?.nombre || 'Depto. de Sistemas de Información',
+            cargo: d.cargo_info?.nombre || (d.tipo === 'ESTUDIANTE' ? 'Estudiante de 4to Año' : (user?.role || 'Profesor Auxiliar')),
+            telefono: d.telefono || '',
+            celular: d.celular || '',
+            whatsapp: d.whatsapp || '',
+            direccion: d.direccion || '',
+            referencia: d.referencia || '',
+            contactoNombre: d.contactoNombre || '',
+            contactoCelular: d.contactoCelular || ''
+          };
+          setPerfilUsuario(pData);
+          setPerfilEdit({
+            telefono: pData.telefono,
+            celular: pData.celular,
+            whatsapp: pData.whatsapp,
+            direccion: pData.direccion,
+            referencia: pData.referencia,
+            contactoNombre: pData.contactoNombre,
+            contactoCelular: pData.contactoCelular
+          });
+        }
+      } catch (e) {
+        console.warn('Error fetching me profile:', e);
+      }
+
+      // 2. Nomencladores: Sedes
+      try {
+        const resSedes = await API.get('guardia-admin/sedes/');
+        if (resSedes.data && resSedes.data.length > 0) {
+          setNomencladores(prev => ({ ...prev, sedes: resSedes.data }));
+        }
+      } catch (e) {
+        console.warn('Error fetching sedes:', e);
+      }
+
+      // 3. Nomencladores: Áreas
+      try {
+        const resAreas = await API.get('guardia-admin/areas/');
+        if (resAreas.data && resAreas.data.length > 0) {
+          const areasMapeadas = resAreas.data.map(a => ({
+            id: a.id,
+            codigo: a.codigo,
+            nombre: a.nombre,
+            responsable: a.responsable_info ? `${a.responsable_info.first_name} ${a.responsable_info.last_name}` : 'Sin asignar',
+            tieneEstudiantes: a.tieneEstudiantes,
+            deptoCount: a.deptoCount || 0,
+            activo: a.activo
+          }));
+          setNomencladores(prev => ({ ...prev, areas: areasMapeadas }));
+          if (areasMapeadas.length > 0) {
+            setFiltroAreaPotencial(areasMapeadas[0].nombre);
           }
         }
-      } catch (err) {
-        console.warn('Backend potencial fetch fallback:', err);
+      } catch (e) {
+        console.warn('Error fetching areas:', e);
       }
-    };
-    fetchPotencialData();
-  }, [user]);
 
-  // Sincronizar datos de Hito 4 (Distribución, Asignaciones del Día, Notificaciones) desde el Backend
-  useEffect(() => {
-    const fetchHito4Data = async () => {
+      // 4. Nomencladores: Departamentos
       try {
-        const token = localStorage.getItem('uho_access_token') || localStorage.getItem('access_token');
-        if (!token) return;
-
-        // 1. Distribución mensual de áreas
-        try {
-          const resDist = await API.get('distribucion/areas/');
-          if (resDist.data && resDist.data.length > 0) {
-            setDistribuciones(resDist.data.map(d => ({
+        const resDeptos = await API.get('guardia-admin/departamentos/');
+        if (resDeptos.data && resDeptos.data.length > 0) {
+          setNomencladores(prev => ({
+            ...prev,
+            departamentos: resDeptos.data.map(d => ({
               id: d.id,
-              area: d.area_nombre || `Área #${d.area}`,
-              depto: d.area_nombre || `Área #${d.area}`,
-              sede: d.sede_nombre || `Sede #${d.sede}`,
-              tipo: d.tipo_turno ? (d.tipo_turno.charAt(0).toUpperCase() + d.tipo_turno.slice(1).toLowerCase()) : 'Diurna',
-              tipoPersonal: d.tipo_personal,
-              dias: d.dias || [],
-              cant: d.cantidad_requerida
-            })));
-          }
-        } catch (e) {
-          console.warn('Distribución backend fallback:', e);
+              codigo: d.codigo,
+              nombre: d.nombre,
+              responsable: d.responsable_info ? `${d.responsable_info.first_name} ${d.responsable_info.last_name}` : 'Sin asignar',
+              areaPadre: d.areaPadre_nombre || 'General',
+              activo: d.activo
+            }))
+          }));
         }
-
-        // 2. Asignaciones nominales de guardia
-        try {
-          const resAsig = await API.get('distribucion/asignaciones/');
-          if (resAsig.data && resAsig.data.length > 0) {
-            setAsignaciones(resAsig.data.map(a => ({
-              id: a.id,
-              fecha: a.fecha,
-              personaId: a.persona,
-              tipo: a.persona_tipo || 'OBRERO',
-              sede: a.sede_nombre || 'Sede Oscar Lucero Moya',
-              tipoGuardia: a.tipo_turno ? (a.tipo_turno.charAt(0).toUpperCase() + a.tipo_turno.slice(1).toLowerCase()) : 'Diurna',
-              asistio: a.asistio !== undefined ? a.asistio : true,
-              evaluacion: a.evaluacion || '',
-              observaciones: a.incidencias || a.observaciones || ''
-            })));
-          }
-        } catch (e) {
-          console.warn('Asignaciones backend fallback:', e);
-        }
-
-        // 3. Notificaciones institucionales (campanita)
-        try {
-          const resNotif = await API.get('control/notificaciones/');
-          if (resNotif.data && resNotif.data.length > 0) {
-            setNotificaciones(resNotif.data.map(n => ({
-              id: n.id,
-              texto: `${n.titulo}: ${n.mensaje}`,
-              tiempo: n.tiempo_relativo || 'Reciente',
-              leido: n.leido
-            })));
-          }
-        } catch (e) {
-          console.warn('Notificaciones backend fallback:', e);
-        }
-
-        // 4. Métricas consolidadas del Dashboard de Cumplimiento (MOD-08)
-        try {
-          const resCump = await API.get('reportes/dashboard-cumplimiento/');
-          if (resCump.data && resCump.data.resumen) {
-            setDatosCumplimiento(resCump.data);
-          }
-        } catch (e) {
-          console.warn('Dashboard cumplimiento sync fallback:', e);
-        }
-      } catch (err) {
-        console.warn('Hito 4/5 sync fallback:', err);
+      } catch (e) {
+        console.warn('Error fetching departamentos:', e);
       }
-    };
 
-    fetchHito4Data();
-  }, [user]);
-
-  // Sincronizar roles y permisos institucionales (RBAC) desde el Backend (Base de Datos)
-  useEffect(() => {
-    const fetchRolesData = async () => {
+      // 5. Nomencladores: Cargos y Permisos
       try {
-        const token = localStorage.getItem('uho_access_token') || localStorage.getItem('access_token');
-        if (!token) return;
-
-        // 1. Cargos y Permisos RBAC
-        try {
-          const res = await API.get('guardia-admin/cargos/');
-          if (res.data && res.data.length > 0) {
-            const nombresCargos = res.data.map(c => c.nombre);
-            const mapaPermisos = {};
-            res.data.forEach(c => {
-              if (Array.isArray(c.permisos) && c.permisos.length > 0) {
-                mapaPermisos[c.nombre] = c.permisos;
-              }
-            });
-            setNomencladores(prev => ({
-              ...prev,
-              cargos: nombresCargos
-            }));
-            setRolesPermisos(prev => ({
-              ...prev,
-              ...mapaPermisos
-            }));
-          }
-        } catch (errCargos) {
-          console.warn('Backend cargos fetch fallback:', errCargos);
+        const resCargos = await API.get('guardia-admin/cargos/');
+        if (resCargos.data && resCargos.data.length > 0) {
+          const mapaPermisos = {};
+          resCargos.data.forEach(c => {
+            if (Array.isArray(c.permisos) && c.permisos.length > 0) {
+              mapaPermisos[c.nombre] = c.permisos;
+            }
+          });
+          setNomencladores(prev => ({ ...prev, cargos: resCargos.data.map(c => c.nombre) }));
+          setRolesPermisos(prev => ({ ...prev, ...mapaPermisos }));
         }
-
-        // 2. Áreas Universitarias
-        try {
-          const resAreas = await API.get('guardia-admin/areas/');
-          if (resAreas.data && resAreas.data.length > 0) {
-            setNomencladores(prev => ({
-              ...prev,
-              areas: resAreas.data.map(a => ({
-                id: a.id,
-                codigo: a.codigo,
-                nombre: a.nombre,
-                responsable: a.responsable_info ? `${a.responsable_info.first_name} ${a.responsable_info.last_name}` : 'Sin asignar',
-                tieneEstudiantes: a.tieneEstudiantes,
-                deptoCount: a.deptoCount || 0,
-                activo: a.activo
-              }))
-            }));
-          }
-        } catch (errAreas) {
-          console.warn('Backend areas fetch fallback:', errAreas);
-        }
-
-        // 3. Perfiles del personal para Potencial y compromiso
-        try {
-          const resPerfiles = await API.get('guardia-admin/perfiles/');
-          if (resPerfiles.data && resPerfiles.data.length > 0) {
-            setPersonal(resPerfiles.data.map(p => {
-              const u = p.usuario_info || {};
-              const fullName = (u.first_name && u.last_name) 
-                ? `${u.first_name} ${u.last_name}` 
-                : (u.username || 'Personal UHO');
-              return {
-                id: p.id,
-                ci: p.ci || '78041523456',
-                nombre: fullName,
-                username: u.username,
-                sexo: p.sexo || 'M',
-                tipo: p.tipo || 'OBRERO',
-                contrato: p.contrato_info?.nombre || 'Fijo Indeterminado',
-                area: p.area_info?.nombre || 'Facultad de Informática y Matemática',
-                depto: p.depto_info?.nombre || 'Depto. de Sistemas de Información',
-                cargo: p.cargo_info?.nombre || 'Profesor Auxiliar',
-                comprometido: p.comprometido || false,
-                sedePref: p.sedePref_info?.nombre || 'Sede Oscar Lucero Moya',
-                tipoPref: p.tipoPref || 'Diurna',
-                diaPref: p.diaPref || 'Semana',
-                telefono: p.telefono || '',
-                celular: p.celular || '',
-                whatsapp: p.whatsapp || '',
-                direccion: p.direccion || '',
-                referencia: p.referencia || '',
-                contactoNombre: p.contactoNombre || '',
-                contactoCelular: p.contactoCelular || ''
-              };
-            }));
-          }
-        } catch (errPerfiles) {
-          console.warn('Backend perfiles fetch fallback:', errPerfiles);
-        }
-      } catch (err) {
-        console.warn('Backend nomencladores fetch fallback:', err);
+      } catch (e) {
+        console.warn('Error fetching cargos:', e);
       }
-    };
 
-    fetchRolesData();
-  }, [user]);
-
-  // Sincronizar compromiso del usuario autenticado desde la base de datos (MOD-03 y MOD-04)
-  useEffect(() => {
-    const fetchMiCompromiso = async () => {
+      // 6. Nomencladores: Contratos
       try {
-        const token = localStorage.getItem('uho_access_token') || localStorage.getItem('access_token');
-        if (!token) return;
-        const res = await API.get('compromiso/compromisos/mi-compromiso/');
-        if (res.data) {
-          const comp = res.data;
+        const resContratos = await API.get('guardia-admin/contratos/');
+        if (resContratos.data && resContratos.data.length > 0) {
+          setNomencladores(prev => ({ ...prev, contratos: resContratos.data.map(c => c.nombre) }));
+        }
+      } catch (e) {
+        console.warn('Error fetching contratos:', e);
+      }
+
+      // 7. Períodos de Guardia (MOD-05)
+      try {
+        const resPeriodos = await API.get('potencial/periodos/');
+        if (resPeriodos.data && resPeriodos.data.length > 0) {
+          const activo = resPeriodos.data.find(p => p.activo) || resPeriodos.data[0];
+          setPeriodoActivo({
+            id: activo.id,
+            nombre: activo.nombre,
+            compromisoInicio: activo.fecha_inicio_compromiso,
+            compromisoFin: activo.fecha_fin_compromiso,
+            aprobacionInicio: activo.fecha_inicio_aprobacion,
+            aprobacionFin: activo.fecha_fin_aprobacion,
+            aprobadoFIM: activo.aprobado || false
+          });
+        }
+      } catch (e) {
+        console.warn('Error fetching periodos:', e);
+      }
+
+      // 8. Personal del Potencial (Perfiles en BD)
+      try {
+        const resPerfiles = await API.get('guardia-admin/perfiles/');
+        if (resPerfiles.data && resPerfiles.data.length > 0) {
+          setPersonal(resPerfiles.data.map(p => {
+            const u = p.usuario_info || {};
+            const fullName = (u.first_name && u.last_name) ? `${u.first_name} ${u.last_name}` : (u.username || 'Personal UHO');
+            return {
+              id: p.id,
+              ci: p.ci || '78041523456',
+              nombre: fullName,
+              username: u.username,
+              sexo: p.sexo || 'M',
+              tipo: p.tipo || 'OBRERO',
+              contrato: p.contrato_info?.nombre || 'Fijo Indeterminado',
+              area: p.area_info?.nombre || 'Facultad de Informática y Matemática',
+              depto: p.depto_info?.nombre || 'Depto. de Sistemas de Información',
+              cargo: p.cargo_info?.nombre || 'Profesor Auxiliar',
+              comprometido: p.comprometido || false,
+              sedePref: p.sedePref_info?.nombre || 'Sede Oscar Lucero Moya',
+              tipoPref: p.tipoPref || 'Diurna',
+              diaPref: p.diaPref || 'Semana',
+              telefono: p.telefono || '',
+              celular: p.celular || '',
+              whatsapp: p.whatsapp || '',
+              direccion: p.direccion || '',
+              referencia: p.referencia || '',
+              contactoNombre: p.contactoNombre || '',
+              contactoCelular: p.contactoCelular || ''
+            };
+          }));
+        }
+      } catch (e) {
+        console.warn('Error fetching perfiles:', e);
+      }
+
+      // 9. Distribución de Guardias (MOD-06)
+      try {
+        const resDist = await API.get('distribucion/areas/');
+        if (resDist.data && resDist.data.length > 0) {
+          setDistribuciones(resDist.data.map(d => ({
+            id: d.id,
+            area: d.area_nombre || `Área #${d.area}`,
+            depto: d.depto_nombre || d.area_nombre || 'General',
+            sede: d.sede_nombre || `Sede #${d.sede}`,
+            tipo: d.tipo_guardia || (d.tipo_turno ? (d.tipo_turno.charAt(0).toUpperCase() + d.tipo_turno.slice(1).toLowerCase()) : 'Diurna'),
+            tipoPersonal: d.tipo_personal || 'OBRERO',
+            dias: Array.isArray(d.dias_asignados) ? d.dias_asignados : (d.dias || []),
+            cant: d.cantidad_requerida || 2
+          })));
+        }
+      } catch (e) {
+        console.warn('Error fetching distribucion:', e);
+      }
+
+      // 10. Asignaciones de Guardia
+      try {
+        const resAsig = await API.get('distribucion/asignaciones/');
+        if (resAsig.data && resAsig.data.length > 0) {
+          setAsignaciones(resAsig.data.map(a => ({
+            id: a.id,
+            fecha: a.fecha,
+            personaId: a.perfil,
+            persona_nombre: a.persona_nombre,
+            tipo: a.persona_tipo || 'OBRERO',
+            sede: a.sede_nombre || 'Sede Oscar Lucero Moya',
+            tipoGuardia: a.tipo_turno || 'Diurna',
+            asistio: a.tiene_control,
+            evaluacion: a.evaluacion || '',
+            observaciones: a.observaciones || ''
+          })));
+        }
+      } catch (e) {
+        console.warn('Error fetching asignaciones:', e);
+      }
+
+      // 11. Notificaciones Institucionales (MOD-09)
+      try {
+        const resNotif = await API.get('control/notificaciones/');
+        if (resNotif.data && resNotif.data.length > 0) {
+          setNotificaciones(resNotif.data.map(n => ({
+            id: n.id,
+            texto: n.mensaje || n.titulo,
+            tiempo: new Date(n.fecha_envio).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            leido: n.leida || n.leido
+          })));
+        }
+      } catch (e) {
+        console.warn('Error fetching notificaciones:', e);
+      }
+
+      // 12. Historial de Cumplimiento y Métricas (MOD-08)
+      try {
+        const resHist = await API.get('control/historial/');
+        if (resHist.data && resHist.data.resumen) {
+          const r = resHist.data.resumen;
+          const c = r.calificaciones || {};
+          setDatosCumplimiento({
+            resumen: {
+              total_programadas: r.total_asignadas || 0,
+              asistencias: r.total_asistidas || 0,
+              ausencias: r.total_ausencias || 0,
+              porcentaje_cumplimiento: r.porcentaje_cumplimiento || 0,
+              tasa_efectividad: r.porcentaje_cumplimiento >= 85 ? 'Alta' : (r.porcentaje_cumplimiento >= 70 ? 'Media' : 'Baja')
+            },
+            evaluaciones: {
+              bien: c.bien || 0,
+              regular: c.regular || 0,
+              mal: c.mal || 0,
+              sin_evaluacion: Math.max(0, (r.total_asistidas || 0) - ((c.bien || 0) + (c.regular || 0) + (c.mal || 0)))
+            },
+            por_area: resHist.data.por_area || [],
+            por_sede: resHist.data.por_sede || [],
+            por_regimen: {
+              obreros: { total: r.total_asignadas || 0, asistencias: r.total_asistidas || 0, ausencias: r.total_ausencias || 0, cumplimiento: r.porcentaje_cumplimiento || 0 },
+              estudiantes: { total: 0, asistencias: 0, ausencias: 0, cumplimiento: 0 }
+            },
+            tendencia_mensual: []
+          });
+        }
+      } catch (e) {
+        console.warn('Error fetching historial cumplimiento:', e);
+      }
+
+      // 13. Compromiso Activo del Usuario (MOD-03 y MOD-04)
+      try {
+        const resComp = await API.get('compromiso/compromisos/mi-compromiso/');
+        if (resComp.data) {
+          const comp = resComp.data;
           const sedeNombre = comp.sede_nombre || (comp.sede ? (typeof comp.sede === 'object' ? comp.sede.nombre : comp.sede) : 'Sede Oscar Lucero Moya');
           const tipoTurno = comp.tipo_turno || 'Diurna';
           const tipoDia = comp.tipo_dia || 'Semana';
@@ -421,30 +434,13 @@ export default function Dashboard() {
             tipoDia: tipoDia,
             fechaFirma: comp.fecha_firma || null
           });
-
-          // Sincronizar estado en la lista de personal para consistencia en la UI
-          setPersonal(prev => prev.map(p => {
-            const isMatch = (user?.username && p.username === user.username) || 
-                            (user?.first_name && p.nombre.toLowerCase().includes(user.first_name.toLowerCase())) ||
-                            (user?.username === 'superadmin' && p.username === 'superadmin');
-            if (isMatch) {
-              return {
-                ...p,
-                comprometido: comp.firmado || false,
-                sedePref: sedeNombre,
-                tipoPref: tipoTurno,
-                diaPref: tipoDia
-              };
-            }
-            return p;
-          }));
         }
-      } catch (err) {
-        console.warn('Error al sincronizar mi compromiso desde backend:', err);
+      } catch (e) {
+        console.warn('Error al sincronizar compromiso:', e);
       }
     };
 
-    fetchMiCompromiso();
+    fetchAllData();
   }, [user, activeTab]);
 
   // --- REGLAS DE NEGOCIO Y FUNCIONES DE AYUDA (E.R.S.) ---
@@ -744,6 +740,10 @@ export default function Dashboard() {
   const handleGuardarPerfil = async () => {
     try {
       await API.patch('guardia-admin/perfiles/me/', perfilEdit);
+      setPerfilUsuario(prev => ({
+        ...prev,
+        ...perfilEdit
+      }));
       showToast('✅ Datos de contacto actualizados y guardados en la base de datos.');
     } catch (e) {
       console.warn('Persistencia de perfil fallback local:', e);
@@ -751,7 +751,9 @@ export default function Dashboard() {
     }
 
     setPersonal(prev => prev.map(p => {
-      const isCurrentUser = p.nombre.toLowerCase().includes(user?.first_name?.toLowerCase()) || p.username === user?.username;
+      const isCurrentUser = (user?.username && p.username === user.username) || 
+                            (user?.first_name && p.nombre.toLowerCase().includes(user.first_name.toLowerCase())) ||
+                            (user?.username === 'superadmin' && p.username === 'superadmin');
       if (isCurrentUser) {
         return { ...p, ...perfilEdit };
       }
@@ -1089,10 +1091,10 @@ export default function Dashboard() {
             <h4 className="text-xs text-emerald-400 font-semibold uppercase tracking-wider">✅ Comprometidos</h4>
             <div className="flex items-baseline gap-2 mt-2">
               <span className="text-2xl font-black text-slate-100">{comprometidosObreros}</span>
-              <span className="text-xs text-emerald-500">({Math.round((comprometidosObreros/totalTrabajadores)*100)}%)</span>
+              <span className="text-xs text-emerald-500">({totalTrabajadores > 0 ? Math.round((comprometidosObreros/totalTrabajadores)*100) : 0}%)</span>
             </div>
             <div className="w-full bg-slate-800 h-1.5 rounded-full mt-2 overflow-hidden">
-              <div className="bg-emerald-500 h-full rounded-full" style={{ width: `${(comprometidosObreros/totalTrabajadores)*100}%` }}></div>
+              <div className="bg-emerald-500 h-full rounded-full" style={{ width: `${totalTrabajadores > 0 ? (comprometidosObreros/totalTrabajadores)*100 : 0}%` }}></div>
             </div>
           </div>
 
@@ -1100,10 +1102,10 @@ export default function Dashboard() {
             <h4 className="text-xs text-amber-400 font-semibold uppercase tracking-wider">⏳ Sin Compromiso</h4>
             <div className="flex items-baseline gap-2 mt-2">
               <span className="text-2xl font-black text-slate-100">{sinCompromisoObreros}</span>
-              <span className="text-xs text-amber-500">({Math.round((sinCompromisoObreros/totalTrabajadores)*100)}%)</span>
+              <span className="text-xs text-amber-500">({totalTrabajadores > 0 ? Math.round((sinCompromisoObreros/totalTrabajadores)*100) : 0}%)</span>
             </div>
             <div className="w-full bg-slate-800 h-1.5 rounded-full mt-2 overflow-hidden">
-              <div className="bg-amber-500 h-full rounded-full" style={{ width: `${(sinCompromisoObreros/totalTrabajadores)*100}%` }}></div>
+              <div className="bg-amber-500 h-full rounded-full" style={{ width: `${totalTrabajadores > 0 ? (sinCompromisoObreros/totalTrabajadores)*100 : 0}%` }}></div>
             </div>
           </div>
 
@@ -1114,7 +1116,7 @@ export default function Dashboard() {
               <span className="text-xs text-blue-500">/ {totalEstudiantes} Comp.</span>
             </div>
             <div className="w-full bg-slate-800 h-1.5 rounded-full mt-2 overflow-hidden">
-              <div className="bg-blue-500 h-full rounded-full" style={{ width: `${(comprometidosEstudiantes/totalEstudiantes)*100}%` }}></div>
+              <div className="bg-blue-500 h-full rounded-full" style={{ width: `${totalEstudiantes > 0 ? (comprometidosEstudiantes/totalEstudiantes)*100 : 0}%` }}></div>
             </div>
           </div>
         </div>
@@ -1310,23 +1312,23 @@ export default function Dashboard() {
             <div className="space-y-2.5 text-xs">
               <div className="flex justify-between border-b border-slate-850 pb-1.5">
                 <span className="text-slate-500">Nombre completo</span>
-                <span className="font-bold text-slate-300">{currentMember.nombre}</span>
+                <span className="font-bold text-slate-300">{perfilUsuario.nombre || user?.first_name || user?.username}</span>
               </div>
               <div className="flex justify-between border-b border-slate-850 pb-1.5">
                 <span className="text-slate-500">CI</span>
-                <span className="font-mono text-slate-300">{enmascararCI(currentMember.ci, true)}</span>
+                <span className="font-mono text-slate-300">{enmascararCI(perfilUsuario.ci || '75041012345', true)}</span>
               </div>
               <div className="flex justify-between border-b border-slate-850 pb-1.5">
                 <span className="text-slate-500">Contrato</span>
-                <span className="text-slate-300">{currentMember.contrato}</span>
+                <span className="text-slate-300">{perfilUsuario.contrato || 'Fijo Indeterminado'}</span>
               </div>
               <div className="flex justify-between border-b border-slate-850 pb-1.5">
                 <span className="text-slate-500">Departamento</span>
-                <span className="text-slate-300">{currentMember.depto}</span>
+                <span className="text-slate-300">{perfilUsuario.depto || 'Depto. de Sistemas de Información'}</span>
               </div>
               <div className="flex justify-between border-b border-slate-850 pb-1.5">
                 <span className="text-slate-500">Cargo</span>
-                <span className="text-slate-300">{currentMember.cargo}</span>
+                <span className="text-slate-300">{perfilUsuario.cargo || user?.role || 'Profesor Auxiliar'}</span>
               </div>
             </div>
             <div className="mt-4 p-3 rounded-xl bg-slate-950/40 border border-slate-850 text-[10px] text-slate-500">
@@ -1454,19 +1456,19 @@ export default function Dashboard() {
             <div className="space-y-2.5 text-xs">
               <div className="flex justify-between border-b border-slate-850 pb-1.5">
                 <span className="text-slate-500">Nombre completo</span>
-                <span className="font-bold text-slate-300">{currentMember.nombre}</span>
+                <span className="font-bold text-slate-300">{perfilUsuario.nombre || user?.first_name || user?.username}</span>
               </div>
               <div className="flex justify-between border-b border-slate-850 pb-1.5">
                 <span className="text-slate-500">CI</span>
-                <span className="font-mono text-slate-300">{enmascararCI(currentMember.ci, true)}</span>
+                <span className="font-mono text-slate-300">{enmascararCI(perfilUsuario.ci || '03102434567', true)}</span>
               </div>
               <div className="flex justify-between border-b border-slate-850 pb-1.5">
                 <span className="text-slate-500">Año de carrera</span>
-                <span className="text-slate-300">4to Año</span>
+                <span className="text-slate-300">{perfilUsuario.cargo?.includes('Año') ? perfilUsuario.cargo : (perfilUsuario.tipo === 'ESTUDIANTE' ? '4to Año' : 'Estudiante')}</span>
               </div>
               <div className="flex justify-between border-b border-slate-850 pb-1.5">
                 <span className="text-slate-500">Facultad</span>
-                <span className="text-slate-300">{currentMember.area}</span>
+                <span className="text-slate-300">{perfilUsuario.area || 'Facultad de Informática y Matemática'}</span>
               </div>
             </div>
           </div>
@@ -1886,8 +1888,6 @@ export default function Dashboard() {
   };
 
   const renderPerfil = () => {
-    const currentMember = personal.find(p => p.username === user?.username || p.nombre.toLowerCase().includes(user?.first_name?.toLowerCase())) || personal[0];
-    
     return (
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="bg-slate-900/50 backdrop-blur-md border border-slate-800/80 rounded-2xl p-6 space-y-4">
@@ -1898,27 +1898,27 @@ export default function Dashboard() {
           <div className="grid grid-cols-2 gap-4 text-xs">
             <div>
               <span className="text-slate-500">Nombre completo</span>
-              <p className="font-bold text-slate-350 mt-1">{currentMember.nombre}</p>
+              <p className="font-bold text-slate-300 mt-1">{perfilUsuario.nombre || (user?.first_name ? `${user.first_name} ${user.last_name || ''}` : user?.username)}</p>
             </div>
             <div>
               <span className="text-slate-500">CI</span>
-              <p className="font-bold text-slate-350 mt-1">{enmascararCI(currentMember.ci, true)}</p>
+              <p className="font-mono text-slate-300 mt-1">{enmascararCI(perfilUsuario.ci || '75041012345', true)}</p>
             </div>
             <div>
               <span className="text-slate-500">Sexo</span>
-              <p className="text-slate-300 mt-1">{currentMember.sexo === 'M' ? 'Masculino' : 'Femenino'}</p>
+              <p className="text-slate-300 mt-1">{perfilUsuario.sexo === 'M' ? 'Masculino' : 'Femenino'}</p>
             </div>
             <div>
               <span className="text-slate-500">Tipo de Contrato</span>
-              <p className="text-slate-300 mt-1">{currentMember.contrato}</p>
+              <p className="text-slate-300 mt-1">{perfilUsuario.contrato || 'Fijo Indeterminado'}</p>
             </div>
             <div>
               <span className="text-slate-500">Área Académica / Facultad</span>
-              <p className="text-slate-300 mt-1">{currentMember.area}</p>
+              <p className="text-slate-300 mt-1">{perfilUsuario.area || 'Facultad de Informática y Matemática'}</p>
             </div>
             <div>
               <span className="text-slate-500">Departamento / Unidad</span>
-              <p className="text-slate-300 mt-1">{currentMember.depto}</p>
+              <p className="text-slate-300 mt-1">{perfilUsuario.depto || 'Depto. de Sistemas de Información'}</p>
             </div>
           </div>
         </div>
