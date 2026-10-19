@@ -208,8 +208,11 @@ def seed():
         print(f"Nota en asignación de responsables: {e}")
 
     # 7. Período de Guardia Activo (RF-0113 / Hito 3)
-    from modules.potencial.models import PeriodoGuardia
+    from modules.potencial.models import PeriodoGuardia, AprobacionPotencialArea
+    from modules.distribucion.models import DistribucionArea, AsignacionGuardia
+    from modules.control.models import ControlGuardia, Notificacion
     import datetime
+
     periodo, p_created = PeriodoGuardia.objects.get_or_create(
         nombre="Junio — Julio 2026",
         defaults={
@@ -223,8 +226,133 @@ def seed():
     if p_created:
         print(f"Período de Guardia creado: {periodo.nombre}")
 
+    # Aprobación de Potencial de la FIM para permitir asignación (RN-05)
+    fac_inf = areas.get('Facultad de Informática y Matemática')
+    if fac_inf:
+        AprobacionPotencialArea.objects.get_or_create(
+            periodo=periodo,
+            area=fac_inf,
+            defaults={'aprobado': True, 'fecha_aprobacion': datetime.datetime.now()}
+        )
+
+    # 8. Distribución de Guardia (MOD-06)
+    sede_lucero = sedes.get('Sede Oscar Lucero Moya')
+    sede_aguilera = sedes.get('Sede Manuel Aguilera')
+    depto_sist = deptos.get('Depto. de Sistemas de Información')
+    depto_mec = deptos.get('Depto. de Ingeniería Mecánica')
+
+    dist1, _ = DistribucionArea.objects.get_or_create(
+        periodo=periodo,
+        area=fac_inf,
+        departamento=depto_sist,
+        sede=sede_lucero,
+        tipo_turno='Diurna',
+        tipo_personal='OBRERO',
+        mes=6,
+        año=2026,
+        defaults={'dias_asignados': [7, 14, 21, 28], 'cantidad_requerida': 2}
+    )
+    dist2, _ = DistribucionArea.objects.get_or_create(
+        periodo=periodo,
+        area=fac_inf,
+        departamento=depto_sist,
+        sede=sede_lucero,
+        tipo_turno='Nocturna',
+        tipo_personal='OBRERO',
+        mes=6,
+        año=2026,
+        defaults={'dias_asignados': [10, 24], 'cantidad_requerida': 2}
+    )
+    dist3, _ = DistribucionArea.objects.get_or_create(
+        periodo=periodo,
+        area=areas.get('Facultad de Ingeniería'),
+        departamento=depto_mec,
+        sede=sede_aguilera,
+        tipo_turno='Diurna',
+        tipo_personal='OBRERO',
+        mes=6,
+        año=2026,
+        defaults={'dias_asignados': [3, 17, 31], 'cantidad_requerida': 2}
+    )
+    print("Distribuciones de Guardia creadas.")
+
+    # 9. Asignaciones Nominales (RF-0603)
+    p_trabajador = Perfil.objects.filter(usuario__username='trabajador').first()
+    p_estudiante = Perfil.objects.filter(usuario__username='estudiante').first()
+
+    asig1, _ = AsignacionGuardia.objects.get_or_create(
+        distribucion=dist1,
+        perfil=p_trabajador,
+        fecha=datetime.date(2026, 6, 7)
+    )
+    asig2, _ = AsignacionGuardia.objects.get_or_create(
+        distribucion=dist1,
+        perfil=p_trabajador,
+        fecha=datetime.date(2026, 6, 14)
+    )
+    asig3, _ = AsignacionGuardia.objects.get_or_create(
+        distribucion=dist2,
+        perfil=p_estudiante,
+        fecha=datetime.date(2026, 6, 10)
+    )
+    print("Asignaciones Nominales creadas.")
+
+    # 10. Controles y Evaluaciones Diarias (MOD-07 / RN-09)
+    admin_usr = User.objects.filter(username='superadmin').first()
+    c1, _ = ControlGuardia.objects.get_or_create(
+        asignacion=asig1,
+        defaults={
+            'asistio': True,
+            'evaluacion': 'B',
+            'observaciones': 'Cumplió correctamente con el relevo de guardia.',
+            'registrado_por': admin_usr
+        }
+    )
+    c2, _ = ControlGuardia.objects.get_or_create(
+        asignacion=asig2,
+        defaults={
+            'asistio': False,
+            'evaluacion': '',  # RN-09: ausencias con evaluacion en blanco
+            'observaciones': 'Ausencia injustificada del puesto asignado.',
+            'registrado_por': admin_usr
+        }
+    )
+    c3, _ = ControlGuardia.objects.get_or_create(
+        asignacion=asig3,
+        defaults={
+            'asistio': True,
+            'evaluacion': 'R',
+            'observaciones': 'Llegó con 15 minutos de retraso al turno nocturno.',
+            'registrado_por': admin_usr
+        }
+    )
+    print("Controles y Evaluaciones de Guardia creados.")
+
+    # 11. Notificaciones en Campana (MOD-09)
+    for u in User.objects.all():
+        Notificacion.objects.get_or_create(
+            usuario=u,
+            titulo="⏰ Período de Guardia Activo",
+            defaults={
+                'mensaje': 'El período de guardia Junio — Julio 2026 está activo en el sistema.',
+                'tipo': 'INFO',
+                'leido': False
+            }
+        )
+        Notificacion.objects.get_or_create(
+            usuario=u,
+            titulo="📋 Revisión de Cronograma",
+            defaults={
+                'mensaje': 'Consulte su cronograma anual de guardia en la pestaña correspondiente.',
+                'tipo': 'RECORDATORIO',
+                'leido': True
+            }
+        )
+    print("Notificaciones del sistema generadas con éxito.")
+
     print("Datos de prueba insertados con éxito.")
 
 if __name__ == "__main__":
     seed()
+
 

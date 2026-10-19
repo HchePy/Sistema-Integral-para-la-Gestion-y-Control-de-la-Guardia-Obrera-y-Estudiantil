@@ -1,6 +1,16 @@
-from django.urls import path
-from .views import DashboardView
+from django.urls import path, include
+from rest_framework.routers import DefaultRouter
+from .views import (
+    ControlGuardiaViewSet,
+    HistorialCumplimientoView,
+    NotificacionViewSet
+)
+
+router = DefaultRouter()
+router.register(r'evaluaciones', ControlGuardiaViewSet, basename='control-evaluacion')
+router.register(r'notificaciones', NotificacionViewSet, basename='control-notificacion')
 
 urlpatterns = [
-    path('dashboard/', DashboardView.as_view(), name='dashboard'),
+    path('historial/', HistorialCumplimientoView.as_view(), name='historial-cumplimiento'),
+    path('', include(router.urls)),
 ]
