@@ -352,18 +352,31 @@ export default function Dashboard() {
       try {
         const resAsig = await API.get('distribucion/asignaciones/');
         if (resAsig.data && resAsig.data.length > 0) {
-          setAsignaciones(resAsig.data.map(a => ({
-            id: a.id,
-            fecha: a.fecha,
-            personaId: a.perfil,
-            persona_nombre: a.persona_nombre,
-            tipo: a.persona_tipo || 'OBRERO',
-            sede: a.sede_nombre || 'Sede Oscar Lucero Moya',
-            tipoGuardia: a.tipo_turno || 'Diurna',
-            asistio: a.tiene_control,
-            evaluacion: a.evaluacion || '',
-            observaciones: a.observaciones || ''
-          })));
+          setAsignaciones(resAsig.data.map(a => {
+            let estado = 'PENDIENTE';
+            if (a.tiene_control) {
+              if (a.asistio) {
+                estado = 'PRESENTE';
+              } else if (a.observaciones && a.observaciones.toLowerCase().includes('justificad')) {
+                estado = 'JUSTIFICADO';
+              } else {
+                estado = 'AUSENTE';
+              }
+            }
+            return {
+              id: a.id,
+              fecha: a.fecha,
+              personaId: a.perfil,
+              persona_nombre: a.persona_nombre,
+              tipo: a.persona_tipo || 'OBRERO',
+              sede: a.sede_nombre || 'Sede Oscar Lucero Moya',
+              tipoGuardia: a.tipo_turno || 'Diurna',
+              estado: estado,
+              asistio: a.tiene_control ? a.asistio : null,
+              evaluacion: a.evaluacion || '',
+              observaciones: a.observaciones || ''
+            };
+          }));
         }
       } catch (e) {
         console.warn('Error fetching asignaciones:', e);
@@ -837,42 +850,94 @@ export default function Dashboard() {
   };
 
   // --- MOD-07: CONTROL DE GUARDIA DIARIO Y EVALUACIONES ---
-  const handleToggleAsistencia = (fecha, personaId) => {
+  const handleSetEstadoAsistencia = (fecha, personaId, nuevoEstado) => {
     setAsignaciones(prev => {
       const exists = prev.find(a => a.fecha === fecha && a.personaId === personaId);
       if (exists) {
-        const nuevoAsistio = !exists.asistio;
-        return prev.map(a => (a.fecha === fecha && a.personaId === personaId) 
-          ? { 
-              ...a, 
-              asistio: nuevoAsistio, 
-              // RN-09: Si no asistió, evaluación debe estar vacía obligatoriamente
-              evaluacion: nuevoAsistio ? (a.evaluacion || 'B') : '' 
-            } 
+        let nuevoAsistio = null;
+        let nuevaEval = exists.evaluacion || '';
+        let nuevasObs = exists.observaciones || '';
+
+        if (nuevoEstado === 'PRESENTE') {
+          nuevoAsistio = true;
+          nuevaEval = nuevaEval || 'B';
+        } else if (nuevoEstado === 'AUSENTE') {
+          nuevoAsistio = false;
+          nuevaEval = ''; // RN-09 estricto
+        } else if (nuevoEstado === 'JUSTIFICADO') {
+          nuevoAsistio = false;
+          nuevaEval = ''; // RN-09 estricto
+          if (!nuevasObs || !nuevasObs.toLowerCase().includes('justificad')) {
+            nuevasObs = nuevasObs ? `[JUSTIFICADO] ${nuevasObs}` : 'Ausencia justificada / Licencia';
+          }
+        } else {
+          // PENDIENTE
+          nuevoAsistio = null;
+          nuevaEval = '';
+        }
+
+        return prev.map(a => (a.fecha === fecha && a.personaId === personaId)
+          ? {
+              ...a,
+              estado: nuevoEstado,
+              asistio: nuevoAsistio,
+              evaluacion: nuevaEval,
+              observaciones: nuevasObs
+            }
           : a
         );
       } else {
         const persona = personal.find(p => p.id === personaId);
-        return [...prev, { 
+        let nuevoAsistio = null;
+        let nuevaEval = '';
+        let nuevasObs = '';
+
+        if (nuevoEstado === 'PRESENTE') {
+          nuevoAsistio = true;
+          nuevaEval = 'B';
+        } else if (nuevoEstado === 'AUSENTE') {
+          nuevoAsistio = false;
+        } else if (nuevoEstado === 'JUSTIFICADO') {
+          nuevoAsistio = false;
+          nuevasObs = 'Ausencia justificada / Licencia';
+        }
+
+        return [...prev, {
           id: Date.now(),
-          fecha, 
-          personaId, 
-          tipo: persona ? persona.tipo : 'OBRERO', 
-          sede: 'Sede Oscar Lucero Moya', 
-          tipoGuardia: 'Diurna', 
-          asistio: true, 
-          evaluacion: 'B', 
-          observaciones: '' 
+          fecha,
+          personaId,
+          persona_nombre: persona ? persona.nombre : 'Personal',
+          tipo: persona ? persona.tipo : 'OBRERO',
+          sede: 'Sede Oscar Lucero Moya',
+          tipoGuardia: 'Diurna',
+          estado: nuevoEstado,
+          asistio: nuevoAsistio,
+          evaluacion: nuevaEval,
+          observaciones: nuevasObs
         }];
       }
     });
   };
 
+  const handleMarcarTodosPresentes = (fecha) => {
+    personal.forEach(p => {
+      handleSetEstadoAsistencia(fecha, p.id, 'PRESENTE');
+    });
+    showToast('✓ Todo el personal convocado marcado como PRESENTE.');
+  };
+
+  const handleReiniciarPendientes = (fecha) => {
+    personal.forEach(p => {
+      handleSetEstadoAsistencia(fecha, p.id, 'PENDIENTE');
+    });
+    showToast('↻ Asistencia reiniciada a PENDIENTE (Sin registrar).');
+  };
+
   const handleUpdateEvaluacion = (fecha, personaId, val) => {
     setAsignaciones(prev => prev.map(a => {
       if (a.fecha === fecha && a.personaId === personaId) {
-        // RN-09: Evaluaciones sólo para quienes asistieron
-        if (!a.asistio) return { ...a, evaluacion: '' };
+        // RN-09: Evaluaciones sólo para quienes asistieron (PRESENTE)
+        if (a.estado !== 'PRESENTE') return { ...a, evaluacion: '' };
         return { ...a, evaluacion: val };
       }
       return a;
@@ -884,20 +949,55 @@ export default function Dashboard() {
   };
 
   const handleGuardarControlDiario = async () => {
-    const asignacionesFecha = asignaciones.filter(a => a.fecha === fechaControl);
-    const registros = asignacionesFecha.map(a => ({
-      asignacion_id: a.id || a.personaId,
-      asistio: a.asistio,
-      evaluacion: a.asistio ? (a.evaluacion || '') : '', // RN-09 estricto
-      incidencias: a.observaciones || ''
-    }));
+    // Tomar todos los registros marcados (no pendientes) para la fecha
+    const registros = personal.map(p => {
+      const asig = asignaciones.find(a => a.personaId === p.id && a.fecha === fechaControl);
+      if (!asig || !asig.estado || asig.estado === 'PENDIENTE') return null;
+      return {
+        asignacion_id: (asig.id && typeof asig.id === 'number' && asig.id < 1000000000) ? asig.id : null,
+        perfil_id: p.id,
+        fecha: fechaControl,
+        asistio: asig.estado === 'PRESENTE',
+        evaluacion: asig.estado === 'PRESENTE' ? (asig.evaluacion || 'B') : '',
+        observaciones: asig.observaciones || ''
+      };
+    }).filter(Boolean);
+
+    if (registros.length === 0) {
+      showToast('⚠️ No hay asistencias marcadas para guardar en esta fecha (todos están en estado Pendiente).', 'error');
+      return;
+    }
 
     try {
-      await API.post('control/evaluaciones/guardar-lote-diario/', { registros });
-      showToast('💾 Control diario sincronizado con el backend exitosamente (RN-09).');
+      const res = await API.post('control/evaluaciones/guardar-lote-diario/', { 
+        fecha: fechaControl,
+        registros 
+      });
+
+      // Actualizar IDs reales desde el backend si se crearon asignaciones nuevas
+      if (res.data?.registros_guardados) {
+        setAsignaciones(prev => {
+          let updated = [...prev];
+          res.data.registros_guardados.forEach(rg => {
+            const idx = updated.findIndex(u => u.fecha === rg.fecha && u.personaId === rg.perfil_id);
+            if (idx >= 0) {
+              updated[idx] = {
+                ...updated[idx],
+                id: rg.asignacion_id,
+                asistio: rg.asistio,
+                evaluacion: rg.evaluacion,
+                observaciones: rg.observaciones
+              };
+            }
+          });
+          return updated;
+        });
+      }
+
+      showToast(`💾 Control diario guardado con persistencia total en la BD (${registros.length} registros sincronizados).`);
     } catch (e) {
-      console.warn('Persistencia local control diario fallback:', e);
-      showToast('💾 Control diario guardado correctamente (RN-09 aplicado).');
+      console.error('Error guardando control diario en backend:', e);
+      showToast('❌ Ocurrió un error al persistir el control en el servidor. Verifique permisos.', 'error');
     }
   };
 
@@ -1770,111 +1870,255 @@ export default function Dashboard() {
   };
 
   const renderControl = () => {
-    // Filtrar o asociar asignaciones de la fecha activa
-    const asignacionesDelDia = asignaciones.filter(a => a.fecha === fechaControl);
-    const totalConvocados = asignacionesDelDia.length > 0 ? asignacionesDelDia.length : personal.length;
-    const asistidosCount = asignacionesDelDia.length > 0 
-      ? asignacionesDelDia.filter(a => a.asistio).length 
-      : personal.filter(p => asignaciones.find(a => a.personaId === p.id && a.fecha === fechaControl)?.asistio).length;
-    const ausentesCount = totalConvocados - asistidosCount;
+    // Conteo por estado de cada miembro del personal para la fecha seleccionada
+    let presentesCount = 0;
+    let ausentesCount = 0;
+    let justificadosCount = 0;
+    let pendientesCount = 0;
+
+    personal.forEach(p => {
+      const asig = asignaciones.find(a => a.personaId === p.id && a.fecha === fechaControl);
+      let est = asig?.estado;
+      if (!est) {
+        if (asig?.asistio === true) est = 'PRESENTE';
+        else if (asig?.asistio === false) {
+          est = asig?.observaciones?.toLowerCase().includes('justificad') ? 'JUSTIFICADO' : 'AUSENTE';
+        } else {
+          est = 'PENDIENTE';
+        }
+      }
+      if (est === 'PRESENTE') presentesCount++;
+      else if (est === 'AUSENTE') ausentesCount++;
+      else if (est === 'JUSTIFICADO') justificadosCount++;
+      else pendientesCount++;
+    });
+
+    const totalConvocados = personal.length;
 
     return (
       <div className="space-y-6">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        {/* Cabecera con selector de fecha, estadísticas y acciones */}
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-slate-900/40 p-4 rounded-2xl border border-slate-800/80">
           <div>
-            <h3 className="text-base font-bold text-slate-100">Control de Guardia Diario y Evaluaciones (MOD-07)</h3>
-            <div className="flex items-center gap-2 mt-1">
-              <span className="text-xs text-slate-400">Fecha de control:</span>
+            <div className="flex items-center gap-2">
+              <ShieldAlert className="h-5 w-5 text-emerald-400" />
+              <h3 className="text-base font-bold text-slate-100">Control de Guardia Diario y Evaluaciones (MOD-07)</h3>
+            </div>
+            <p className="text-xs text-slate-400 mt-1">
+              Registro formal de asistencia, inasistencias y evaluaciones operativas según <span className="text-emerald-400 font-semibold">RN-09</span>.
+            </p>
+            <div className="flex items-center gap-2 mt-3">
+              <span className="text-xs font-semibold text-slate-400">Fecha de control:</span>
               <input 
                 type="date" 
                 value={fechaControl} 
                 onChange={(e) => setFechaControl(e.target.value)} 
-                className="bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1 text-xs text-slate-200 focus:outline-none focus:border-emerald-500 font-semibold"
+                className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-emerald-500 font-semibold shadow-inner"
               />
             </div>
           </div>
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-2 text-xs bg-slate-950/60 px-3 py-1.5 rounded-xl border border-slate-850">
-              <span className="text-emerald-400 font-bold">{asistidosCount} Asistieron</span>
-              <span className="text-slate-600">|</span>
-              <span className="text-red-400 font-bold">{ausentesCount} Ausentes</span>
+
+          <div className="flex flex-wrap items-center gap-2.5">
+            {/* Contadores por estado */}
+            <div className="flex flex-wrap items-center gap-2 text-xs bg-slate-950/80 p-2 rounded-xl border border-slate-850">
+              <span className="px-2 py-0.5 rounded-lg bg-emerald-950/60 text-emerald-400 font-bold border border-emerald-800/40 flex items-center gap-1">
+                <CheckCircle2 className="h-3.5 w-3.5" /> {presentesCount} Presentes
+              </span>
+              <span className="px-2 py-0.5 rounded-lg bg-red-950/60 text-red-400 font-bold border border-red-800/40 flex items-center gap-1">
+                <X className="h-3.5 w-3.5" /> {ausentesCount} Ausentes
+              </span>
+              <span className="px-2 py-0.5 rounded-lg bg-amber-950/60 text-amber-400 font-bold border border-amber-800/40 flex items-center gap-1">
+                <Award className="h-3.5 w-3.5" /> {justificadosCount} Justificados
+              </span>
+              <span className="px-2 py-0.5 rounded-lg bg-slate-900 text-slate-400 font-semibold border border-slate-800 flex items-center gap-1">
+                <Clock className="h-3.5 w-3.5" /> {pendientesCount} Pendientes
+              </span>
             </div>
-            <button 
-              onClick={handleGuardarControlDiario} 
-              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-md flex items-center gap-2"
-            >
-              <Save className="h-4 w-4" />
-              Guardar Control Diario
-            </button>
+
+            {/* Acciones en lote */}
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => handleMarcarTodosPresentes(fechaControl)}
+                className="px-3 py-2 bg-slate-850 hover:bg-slate-800 text-emerald-400 border border-emerald-500/20 rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5"
+                title="Marcar todos los convocados como presentes"
+              >
+                <Check className="h-3.5 w-3.5" />
+                <span>Todos Presentes</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleReiniciarPendientes(fechaControl)}
+                className="px-3 py-2 bg-slate-850 hover:bg-slate-800 text-slate-300 border border-slate-700 rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5"
+                title="Reiniciar lista a estado pendiente"
+              >
+                <RefreshCw className="h-3.5 w-3.5" />
+                <span>Reiniciar</span>
+              </button>
+              <button 
+                type="button"
+                onClick={handleGuardarControlDiario} 
+                className="px-4 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-teal-600 hover:to-emerald-600 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-emerald-950/50 flex items-center gap-2"
+              >
+                <Save className="h-4 w-4" />
+                Guardar Control Diario
+              </button>
+            </div>
           </div>
         </div>
 
-        <div className="bg-slate-900/50 backdrop-blur-md border border-slate-800/80 rounded-2xl overflow-x-auto">
-          <table className="w-full text-xs text-left min-w-[700px] md:min-w-0">
+        {/* Tabla de pase de lista */}
+        <div className="bg-slate-900/50 backdrop-blur-md border border-slate-800/80 rounded-2xl overflow-x-auto shadow-xl">
+          <table className="w-full text-xs text-left min-w-[780px]">
             <thead className="bg-slate-950 text-slate-300 font-bold border-b border-slate-800">
               <tr>
                 <th className="p-4">Nombre y Apellidos</th>
                 <th className="p-4">Rol / Tipo</th>
                 <th className="p-4">Teléfono</th>
-                <th className="p-4">¿Asistió?</th>
-                <th className="p-4">Evaluación (RN-09)</th>
+                <th className="p-4">¿Asistencia / Estado?</th>
+                <th className="p-4">Evaluación de Desempeño (RN-09)</th>
                 <th className="p-4">Observaciones / Incidencias</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-850">
               {personal.map(p => {
                 const asignacion = asignaciones.find(a => a.personaId === p.id && a.fecha === fechaControl);
-                const asistio = asignacion ? asignacion.asistio : false;
+                let estadoActual = asignacion?.estado;
+                if (!estadoActual) {
+                  if (asignacion?.asistio === true) estadoActual = 'PRESENTE';
+                  else if (asignacion?.asistio === false) {
+                    estadoActual = asignacion?.observaciones?.toLowerCase().includes('justificad') ? 'JUSTIFICADO' : 'AUSENTE';
+                  } else {
+                    estadoActual = 'PENDIENTE';
+                  }
+                }
                 const evalVal = asignacion ? asignacion.evaluacion : '';
                 const obsVal = asignacion ? asignacion.observaciones : '';
 
                 return (
-                  <tr key={p.id} className="hover:bg-slate-950/20 text-slate-300 transition-colors">
-                    <td className="p-4 font-semibold text-slate-200">{p.nombre}</td>
+                  <tr key={p.id} className="hover:bg-slate-950/30 text-slate-300 transition-colors">
+                    <td className="p-4 font-semibold text-slate-200">
+                      <div>{p.nombre}</div>
+                      <span className="text-[10px] text-slate-500 font-normal">{p.cargo || p.area || 'UHO'}</span>
+                    </td>
                     <td className="p-4">
                       <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${p.tipo === 'OBRERO' ? 'bg-blue-950 text-blue-400 border border-blue-800/40' : 'bg-green-950 text-green-400 border border-green-800/40'}`}>
                         {p.tipo}
                       </span>
                     </td>
                     <td className="p-4 text-slate-400 font-mono">{p.celular || p.telefono || 'N/A'}</td>
+                    
+                    {/* Botones de acción de asistencia intuitiva */}
                     <td className="p-4">
-                      <label className="flex items-center gap-1.5 cursor-pointer">
-                        <input 
-                          type="checkbox" 
-                          checked={asistio}
-                          onChange={() => handleToggleAsistencia(fechaControl, p.id)}
-                          className="accent-emerald-500 h-4.5 w-4.5 rounded" 
-                        />
-                        <span className={asistio ? 'text-emerald-400 font-bold' : 'text-slate-400'}>
-                          {asistio ? 'Presente' : 'Ausente'}
-                        </span>
-                      </label>
+                      <div className="space-y-1.5">
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => handleSetEstadoAsistencia(fechaControl, p.id, estadoActual === 'PRESENTE' ? 'PENDIENTE' : 'PRESENTE')}
+                            className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1 ${
+                              estadoActual === 'PRESENTE'
+                                ? 'bg-emerald-600 text-white shadow-md shadow-emerald-950/60 ring-2 ring-emerald-400'
+                                : 'bg-slate-900 text-slate-400 hover:text-emerald-400 hover:bg-emerald-950/30 border border-slate-800'
+                            }`}
+                            title="Marcar como presente"
+                          >
+                            <Check className="h-3.5 w-3.5" />
+                            <span>Presente</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => handleSetEstadoAsistencia(fechaControl, p.id, estadoActual === 'AUSENTE' ? 'PENDIENTE' : 'AUSENTE')}
+                            className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1 ${
+                              estadoActual === 'AUSENTE'
+                                ? 'bg-red-600 text-white shadow-md shadow-red-950/60 ring-2 ring-red-400'
+                                : 'bg-slate-900 text-slate-400 hover:text-red-400 hover:bg-red-950/30 border border-slate-800'
+                            }`}
+                            title="Marcar como ausente injustificado"
+                          >
+                            <X className="h-3.5 w-3.5" />
+                            <span>Ausente</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => handleSetEstadoAsistencia(fechaControl, p.id, estadoActual === 'JUSTIFICADO' ? 'PENDIENTE' : 'JUSTIFICADO')}
+                            className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1 ${
+                              estadoActual === 'JUSTIFICADO'
+                                ? 'bg-amber-600 text-white shadow-md shadow-amber-950/60 ring-2 ring-amber-400'
+                                : 'bg-slate-900 text-slate-400 hover:text-amber-400 hover:bg-amber-950/30 border border-slate-800'
+                            }`}
+                            title="Marcar como ausencia justificada / licencia médica"
+                          >
+                            <Award className="h-3.5 w-3.5" />
+                            <span>Justificado</span>
+                          </button>
+                        </div>
+
+                        {/* Indicador de estado */}
+                        <div>
+                          {estadoActual === 'PRESENTE' && (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-400 bg-emerald-950/60 px-2 py-0.5 rounded-full border border-emerald-800/40">
+                              <CheckCircle2 className="h-3 w-3" /> Asistencia Confirmada
+                            </span>
+                          )}
+                          {estadoActual === 'AUSENTE' && (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-red-400 bg-red-950/60 px-2 py-0.5 rounded-full border border-red-800/40">
+                              <AlertTriangle className="h-3 w-3" /> Ausencia Registrada
+                            </span>
+                          )}
+                          {estadoActual === 'JUSTIFICADO' && (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-400 bg-amber-950/60 px-2 py-0.5 rounded-full border border-amber-800/40">
+                              <Award className="h-3 w-3" /> Permiso / Justificación
+                            </span>
+                          )}
+                          {estadoActual === 'PENDIENTE' && (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-slate-500 bg-slate-950/60 px-2 py-0.5 rounded-full border border-slate-800">
+                              <Clock className="h-3 w-3" /> Pendiente de pase de lista
+                            </span>
+                          )}
+                        </div>
+                      </div>
                     </td>
+
+                    {/* Calificación de Desempeño (RN-09) */}
                     <td className="p-4">
-                      {asistio ? (
-                        <select 
-                          value={evalVal}
-                          onChange={(e) => handleUpdateEvaluacion(fechaControl, p.id, e.target.value)}
-                          className="bg-slate-950 border border-slate-800 rounded-lg px-2 py-1 text-xs text-slate-300 focus:outline-none focus:border-emerald-500"
-                        >
-                          <option value="">-- Seleccionar --</option>
-                          <option value="B">Bien (B)</option>
-                          <option value="R">Regular (R)</option>
-                          <option value="M">Mal (M)</option>
-                        </select>
-                      ) : (
-                        <span className="text-[11px] font-semibold text-slate-500 italic px-2 py-1 bg-slate-950/40 rounded-lg border border-slate-850">
+                      {estadoActual === 'PRESENTE' ? (
+                        <div className="space-y-1">
+                          <select 
+                            value={evalVal || 'B'}
+                            onChange={(e) => handleUpdateEvaluacion(fechaControl, p.id, e.target.value)}
+                            className="bg-slate-950 border border-emerald-600/40 rounded-lg px-2.5 py-1 text-xs text-emerald-300 font-semibold focus:outline-none focus:border-emerald-500"
+                          >
+                            <option value="B">Bien (B) - Cumplimiento destacado</option>
+                            <option value="R">Regular (R) - Con incidencias leves</option>
+                            <option value="M">Mal (M) - Incumplimiento grave</option>
+                          </select>
+                          <div className="text-[10px] text-slate-500">Evaluación obligatoria según RN-09</div>
+                        </div>
+                      ) : estadoActual === 'JUSTIFICADO' ? (
+                        <span className="text-[11px] font-semibold text-amber-400/90 italic px-2.5 py-1 bg-amber-950/30 rounded-lg border border-amber-800/40 inline-block">
+                          Exonerado (RN-09: Justificado)
+                        </span>
+                      ) : estadoActual === 'AUSENTE' ? (
+                        <span className="text-[11px] font-semibold text-red-400/80 italic px-2.5 py-1 bg-red-950/30 rounded-lg border border-red-800/40 inline-block">
                           Sin eval (RN-09: Ausente)
+                        </span>
+                      ) : (
+                        <span className="text-[11px] font-semibold text-slate-500 italic px-2.5 py-1 bg-slate-950/40 rounded-lg border border-slate-850 inline-block">
+                          Sin registrar
                         </span>
                       )}
                     </td>
+
+                    {/* Observaciones / Incidencias */}
                     <td className="p-4">
                       <input 
                         type="text" 
-                        placeholder="Escribir notas de asistencia o sustitución..."
+                        placeholder={estadoActual === 'JUSTIFICADO' ? "Motivo: Licencia médica, comisión..." : "Notas de asistencia o sustitución..."}
                         value={obsVal}
                         onChange={(e) => handleUpdateObservaciones(fechaControl, p.id, e.target.value)}
-                        className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-1 text-xs text-slate-200 focus:outline-none focus:border-slate-700" 
+                        className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-slate-700" 
                       />
                     </td>
                   </tr>

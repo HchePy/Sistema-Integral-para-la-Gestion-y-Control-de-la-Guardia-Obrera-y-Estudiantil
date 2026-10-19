@@ -7,8 +7,9 @@ from django.utils import timezone
 from datetime import datetime, timedelta
 from .models import ControlGuardia, Notificacion
 from .serializers import ControlGuardiaSerializer, NotificacionSerializer
-from modules.distribucion.models import AsignacionGuardia
-from modules.guardia_admin.models import Perfil
+from modules.distribucion.models import AsignacionGuardia, DistribucionArea
+from modules.guardia_admin.models import Perfil, Sede
+from modules.potencial.models import PeriodoGuardia
 from core.rbac import (
     HasRole, ROLE_SUPERADMIN, ROLE_JEFE_SEGURIDAD,
     ROLE_RESPONSABLE_AREA, ROLE_RESPONSABLE_DEPARTAMENTO
@@ -69,19 +70,16 @@ class ControlGuardiaViewSet(viewsets.ModelViewSet):
             "registros": [
                 {
                     "asignacion_id": 1,
+                    "perfil_id": 2,
+                    "fecha": "2026-06-07",
                     "asistio": true,
                     "evaluacion": "B",
                     "observaciones": "Cumplió correctamente"
-                },
-                {
-                    "asignacion_id": 2,
-                    "asistio": false,
-                    "evaluacion": "",
-                    "observaciones": "Ausencia injustificada"
                 }
             ]
         }
         """
+        fecha_lote = request.data.get('fecha')
         registros = request.data.get('registros', [])
         if not registros:
             return Response({"error": "No se enviaron registros de asistencia para guardar."}, status=status.HTTP_400_BAD_REQUEST)
@@ -91,18 +89,62 @@ class ControlGuardiaViewSet(viewsets.ModelViewSet):
 
         for item in registros:
             asignacion_id = item.get('asignacion_id')
-            asistio = item.get('asistio', True)
+            perfil_id = item.get('perfil_id')
+            item_fecha = item.get('fecha') or fecha_lote
+            asistio = bool(item.get('asistio', False))
             evaluacion = item.get('evaluacion', '')
-            observaciones = item.get('observaciones', '')
+            observaciones = item.get('observaciones', item.get('incidencias', ''))
 
             # RN-09: Si no asistió, evaluación forzada a ''
             if not asistio:
                 evaluacion = ''
+            elif evaluacion and evaluacion not in ['B', 'R', 'M']:
+                evaluacion = 'B'
 
             try:
-                asignacion = AsignacionGuardia.objects.filter(id=asignacion_id).first()
+                asignacion = None
+                # 1. Buscar por asignacion_id numérico válido
+                if asignacion_id and str(asignacion_id).isdigit() and int(asignacion_id) < 1000000000:
+                    asignacion = AsignacionGuardia.objects.filter(id=int(asignacion_id)).first()
+
+                # 2. Si no se encontró por ID, buscar por perfil_id y fecha
+                if not asignacion and perfil_id and item_fecha:
+                    asignacion = AsignacionGuardia.objects.filter(perfil_id=perfil_id, fecha=item_fecha).first()
+
+                # 3. Si aún no existe la asignación para este día, crearla para permitir el pase de control
+                if not asignacion and perfil_id and item_fecha:
+                    perfil = Perfil.objects.filter(id=perfil_id).first()
+                    if perfil:
+                        dist = DistribucionArea.objects.filter(area=perfil.area).first() or DistribucionArea.objects.first()
+                        if not dist:
+                            periodo = PeriodoGuardia.objects.filter(activo=True).first() or PeriodoGuardia.objects.first()
+                            sede = Sede.objects.first()
+                            if periodo and sede and perfil.area:
+                                f_parts = str(item_fecha).split('-')
+                                dist = DistribucionArea.objects.create(
+                                    periodo=periodo,
+                                    area=perfil.area,
+                                    sede=sede,
+                                    tipo_turno='Diurna',
+                                    tipo_personal=perfil.tipo,
+                                    mes=int(f_parts[1]),
+                                    año=int(f_parts[0]),
+                                    dias_asignados=[int(f_parts[2])],
+                                    cantidad_requerida=1
+                                )
+                        if dist:
+                            dia_num = int(str(item_fecha).split('-')[2])
+                            if dia_num not in dist.dias_asignados:
+                                dist.dias_asignados.append(dia_num)
+                                dist.save()
+                            asignacion, _ = AsignacionGuardia.objects.get_or_create(
+                                perfil=perfil,
+                                fecha=item_fecha,
+                                defaults={'distribucion': dist}
+                            )
+
                 if not asignacion:
-                    errores.append(f"Asignación con ID {asignacion_id} no encontrada.")
+                    errores.append(f"No fue posible asociar asignación para el registro de perfil #{perfil_id} en fecha {item_fecha}.")
                     continue
 
                 control, created = ControlGuardia.objects.update_or_create(
@@ -114,13 +156,22 @@ class ControlGuardiaViewSet(viewsets.ModelViewSet):
                         'registrado_por': request.user
                     }
                 )
-                procesados.append(control.id)
+                procesados.append({
+                    "control_id": control.id,
+                    "asignacion_id": asignacion.id,
+                    "perfil_id": asignacion.perfil_id,
+                    "fecha": str(asignacion.fecha),
+                    "asistio": control.asistio,
+                    "evaluacion": control.evaluacion,
+                    "observaciones": control.observaciones
+                })
             except Exception as e:
-                errores.append(f"Error procesando asignación {asignacion_id}: {str(e)}")
+                errores.append(f"Error procesando registro: {str(e)}")
 
         return Response({
-            "mensaje": f"{len(procesados)} registros de control diario guardados exitosamente.",
+            "mensaje": f"{len(procesados)} registros de control diario guardados exitosamente en la base de datos.",
             "total_procesados": len(procesados),
+            "registros_guardados": procesados,
             "errores": errores
         }, status=status.HTTP_200_OK if procesados else status.HTTP_400_BAD_REQUEST)
 

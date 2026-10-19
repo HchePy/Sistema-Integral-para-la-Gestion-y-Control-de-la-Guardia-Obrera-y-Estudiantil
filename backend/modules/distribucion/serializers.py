@@ -75,6 +75,10 @@ class AsignacionGuardiaSerializer(serializers.ModelSerializer):
     tipo_turno = serializers.ReadOnlyField(source='distribucion.tipo_turno')
     tipo_personal = serializers.ReadOnlyField(source='distribucion.tipo_personal')
     tiene_control = serializers.SerializerMethodField()
+    asistio = serializers.SerializerMethodField()
+    evaluacion = serializers.SerializerMethodField()
+    observaciones = serializers.SerializerMethodField()
+    control_id = serializers.SerializerMethodField()
 
     class Meta:
         model = AsignacionGuardia
@@ -83,6 +87,7 @@ class AsignacionGuardiaSerializer(serializers.ModelSerializer):
             'persona_nombre', 'persona_ci', 'persona_telefono', 'persona_tipo',
             'area_nombre', 'depto_nombre', 'sede_nombre', 'tipo_turno', 'tipo_personal',
             'notificado_semana', 'notificado_dia', 'tiene_control',
+            'asistio', 'evaluacion', 'observaciones', 'control_id',
             'creado_en', 'actualizado_en'
         ]
 
@@ -109,6 +114,26 @@ class AsignacionGuardiaSerializer(serializers.ModelSerializer):
 
     def get_tiene_control(self, obj):
         return hasattr(obj, 'control')
+
+    def get_asistio(self, obj):
+        if hasattr(obj, 'control'):
+            return obj.control.asistio
+        return None
+
+    def get_evaluacion(self, obj):
+        if hasattr(obj, 'control'):
+            return obj.control.evaluacion
+        return ''
+
+    def get_observaciones(self, obj):
+        if hasattr(obj, 'control'):
+            return obj.control.observaciones
+        return ''
+
+    def get_control_id(self, obj):
+        if hasattr(obj, 'control'):
+            return obj.control.id
+        return None
 
     def validate(self, data):
         distribucion = data.get('distribucion', getattr(self.instance, 'distribucion', None))
