@@ -54,6 +54,31 @@ class CompromisoViewSet(viewsets.ModelViewSet):
         # Trabajador / Estudiante ven únicamente el suyo
         return CompromisoGuardia.objects.filter(perfil__usuario=user)
 
+    @action(detail=False, methods=['get'], url_path='mi-compromiso')
+    def mi_compromiso(self, request):
+        """
+        Retorna el compromiso activo del usuario en sesión desde la base de datos.
+        """
+        user = request.user
+        perfil = getattr(user, 'perfil', None)
+        if not perfil:
+            return Response({'error': 'El usuario no tiene un perfil asociado'}, status=status.HTTP_404_NOT_FOUND)
+        
+        compromiso = CompromisoGuardia.objects.filter(perfil=perfil).order_by('-actualizado_en').first()
+        if not compromiso:
+            return Response({
+                'id': None,
+                'firmado': False,
+                'sede_nombre': getattr(perfil.sedePref, 'nombre', '') if perfil.sedePref else '',
+                'tipo_turno': perfil.tipoPref or 'Diurna',
+                'tipo_dia': perfil.diaPref or 'Semana',
+                'fecha_firma': None
+            }, status=status.HTTP_200_OK)
+        
+        data = self.get_serializer(compromiso).data
+        data['firmado'] = True
+        return Response(data, status=status.HTTP_200_OK)
+
     @action(detail=False, methods=['post'], url_path='firmar')
     def firmar(self, request):
         """

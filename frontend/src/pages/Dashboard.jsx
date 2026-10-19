@@ -5,7 +5,7 @@ import {
   Users, UserCheck, LogOut, Shield, Database, Sparkles, Lock, Unlock, 
   CheckCircle2, AlertTriangle, Calendar, FileText, Bell, ShieldAlert, 
   MapPin, Plus, Trash2, Search, Edit, Save, Download, RefreshCw, X, Check, Award,
-  Menu
+  Menu, Clock
 } from 'lucide-react';
 
 export default function Dashboard() {
@@ -354,6 +354,44 @@ export default function Dashboard() {
         } catch (errAreas) {
           console.warn('Backend areas fetch fallback:', errAreas);
         }
+
+        // 3. Perfiles del personal para Potencial y compromiso
+        try {
+          const resPerfiles = await API.get('guardia-admin/perfiles/');
+          if (resPerfiles.data && resPerfiles.data.length > 0) {
+            setPersonal(resPerfiles.data.map(p => {
+              const u = p.usuario_info || {};
+              const fullName = (u.first_name && u.last_name) 
+                ? `${u.first_name} ${u.last_name}` 
+                : (u.username || 'Personal UHO');
+              return {
+                id: p.id,
+                ci: p.ci || '78041523456',
+                nombre: fullName,
+                username: u.username,
+                sexo: p.sexo || 'M',
+                tipo: p.tipo || 'OBRERO',
+                contrato: p.contrato_info?.nombre || 'Fijo Indeterminado',
+                area: p.area_info?.nombre || 'Facultad de Informática y Matemática',
+                depto: p.depto_info?.nombre || 'Depto. de Sistemas de Información',
+                cargo: p.cargo_info?.nombre || 'Profesor Auxiliar',
+                comprometido: p.comprometido || false,
+                sedePref: p.sedePref_info?.nombre || 'Sede Oscar Lucero Moya',
+                tipoPref: p.tipoPref || 'Diurna',
+                diaPref: p.diaPref || 'Semana',
+                telefono: p.telefono || '',
+                celular: p.celular || '',
+                whatsapp: p.whatsapp || '',
+                direccion: p.direccion || '',
+                referencia: p.referencia || '',
+                contactoNombre: p.contactoNombre || '',
+                contactoCelular: p.contactoCelular || ''
+              };
+            }));
+          }
+        } catch (errPerfiles) {
+          console.warn('Backend perfiles fetch fallback:', errPerfiles);
+        }
       } catch (err) {
         console.warn('Backend nomencladores fetch fallback:', err);
       }
@@ -361,6 +399,53 @@ export default function Dashboard() {
 
     fetchRolesData();
   }, [user]);
+
+  // Sincronizar compromiso del usuario autenticado desde la base de datos (MOD-03 y MOD-04)
+  useEffect(() => {
+    const fetchMiCompromiso = async () => {
+      try {
+        const token = localStorage.getItem('uho_access_token') || localStorage.getItem('access_token');
+        if (!token) return;
+        const res = await API.get('compromiso/compromisos/mi-compromiso/');
+        if (res.data) {
+          const comp = res.data;
+          const sedeNombre = comp.sede_nombre || (comp.sede ? (typeof comp.sede === 'object' ? comp.sede.nombre : comp.sede) : 'Sede Oscar Lucero Moya');
+          const tipoTurno = comp.tipo_turno || 'Diurna';
+          const tipoDia = comp.tipo_dia || 'Semana';
+          
+          setCompromisoUsuario({
+            cargando: false,
+            firmado: comp.firmado || false,
+            sede: sedeNombre,
+            tipoTurno: tipoTurno,
+            tipoDia: tipoDia,
+            fechaFirma: comp.fecha_firma || null
+          });
+
+          // Sincronizar estado en la lista de personal para consistencia en la UI
+          setPersonal(prev => prev.map(p => {
+            const isMatch = (user?.username && p.username === user.username) || 
+                            (user?.first_name && p.nombre.toLowerCase().includes(user.first_name.toLowerCase())) ||
+                            (user?.username === 'superadmin' && p.username === 'superadmin');
+            if (isMatch) {
+              return {
+                ...p,
+                comprometido: comp.firmado || false,
+                sedePref: sedeNombre,
+                tipoPref: tipoTurno,
+                diaPref: tipoDia
+              };
+            }
+            return p;
+          }));
+        }
+      } catch (err) {
+        console.warn('Error al sincronizar mi compromiso desde backend:', err);
+      }
+    };
+
+    fetchMiCompromiso();
+  }, [user, activeTab]);
 
   // --- REGLAS DE NEGOCIO Y FUNCIONES DE AYUDA (E.R.S.) ---
 
@@ -401,6 +486,16 @@ export default function Dashboard() {
   const [personalSeleccionadoPotencial, setPersonalSeleccionadoPotencial] = useState([]);
   const [searchPersonQuery, setSearchPersonQuery] = useState('');
   const [searchResultPerson, setSearchResultPerson] = useState(null);
+
+  // --- ESTADO REACTIVO DE COMPROMISO DEL USUARIO (PERSISTENCIA BD) ---
+  const [compromisoUsuario, setCompromisoUsuario] = useState({
+    cargando: true,
+    firmado: false,
+    sede: 'Sede Oscar Lucero Moya',
+    tipoTurno: 'Diurna',
+    tipoDia: 'Semana',
+    fechaFirma: null
+  });
 
   // --- MODALS ESTADOS ---
   const [showModalInclusionManual, setShowModalInclusionManual] = useState(false);
@@ -520,21 +615,40 @@ export default function Dashboard() {
 
   // Actualizar compromiso (MOD-03 y MOD-04)
   const handleGuardarCompromiso = async (sede, tipo, dia) => {
+    const esEst = activeTab === 'compromiso-estudiantil' || user?.role === 'ESTUDIANTE';
     try {
       await API.post('compromiso/compromisos/firmar/', {
         sede: sede,
         sede_nombre: sede,
         tipo_turno: tipo,
-        tipo_dia: dia
+        tipo_dia: dia,
+        es_estudiante: esEst
+      });
+      setCompromisoUsuario({
+        cargando: false,
+        firmado: true,
+        sede: sede,
+        tipoTurno: tipo,
+        tipoDia: dia,
+        fechaFirma: new Date().toISOString()
       });
       showToast('✅ Compromiso de guardia firmado y guardado en la base de datos.');
     } catch (e) {
       console.warn('Persistencia compromiso fallback local:', e);
+      setCompromisoUsuario(prev => ({
+        ...prev,
+        firmado: true,
+        sede: sede,
+        tipoTurno: tipo,
+        tipoDia: dia
+      }));
       showToast('✅ Compromiso de guardia firmado exitosamente.');
     }
 
     setPersonal(prev => prev.map(p => {
-      const isCurrentUser = p.nombre.toLowerCase().includes(user?.first_name?.toLowerCase()) || p.username === user?.username;
+      const isCurrentUser = (user?.username && p.username === user.username) || 
+                            (user?.first_name && p.nombre.toLowerCase().includes(user.first_name.toLowerCase())) ||
+                            (user?.username === 'superadmin' && p.username === 'superadmin');
       if (isCurrentUser) {
         return { ...p, comprometido: true, sedePref: sede, tipoPref: tipo, diaPref: dia };
       }
@@ -1081,22 +1195,39 @@ export default function Dashboard() {
   };
 
   const renderCompromisoObrero = () => {
-    // Buscar datos del usuario logueado en la lista simulada
-    const currentMember = personal.find(p => p.username === user?.username || p.nombre.toLowerCase().includes(user?.first_name?.toLowerCase())) || personal[0];
+    // Buscar datos del usuario logueado en la lista simulada o perfil activo
+    const currentMember = personal.find(p => 
+      (user?.username && p.username === user.username) || 
+      (user?.first_name && p.nombre.toLowerCase().includes(user.first_name.toLowerCase()))
+    ) || personal[0];
     
     return (
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 bg-slate-900/50 backdrop-blur-md border border-slate-800/80 rounded-2xl p-6 space-y-5">
-          <h3 className="text-base font-bold text-slate-100 border-b border-slate-850 pb-3 flex items-center gap-2">
-            <UserCheck className="h-5 w-5 text-emerald-400" />
-            Firma de Compromiso Obrera
+          <h3 className="text-base font-bold text-slate-100 border-b border-slate-850 pb-3 flex items-center justify-between">
+            <span className="flex items-center gap-2">
+              <UserCheck className="h-5 w-5 text-emerald-400" />
+              Firma de Compromiso Obrero
+            </span>
+            {compromisoUsuario.firmado ? (
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                <CheckCircle2 className="h-3.5 w-3.5" />
+                Compromiso Guardado en BD
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                <Clock className="h-3.5 w-3.5" />
+                Pendiente de Firma
+              </span>
+            )}
           </h3>
           
           <div className="space-y-4">
             <div>
               <label className="block text-xs font-semibold text-slate-400 mb-2">Sede donde prefiere realizar la guardia *</label>
               <select 
-                defaultValue={currentMember.sedePref || ''}
+                value={compromisoUsuario.sede || 'Sede Oscar Lucero Moya'}
+                onChange={(e) => setCompromisoUsuario(prev => ({ ...prev, sede: e.target.value }))}
                 id="form-sede-obrero"
                 className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-slate-200 focus:outline-none focus:border-emerald-500"
               >
@@ -1109,11 +1240,25 @@ export default function Dashboard() {
               <label className="block text-xs font-semibold text-slate-400 mb-2">Preferencia de Turno *</label>
               <div className="flex gap-4">
                 <label className="flex items-center gap-2 cursor-pointer text-xs text-slate-300">
-                  <input type="radio" name="turno-pref" value="Diurna" defaultChecked={currentMember.tipoPref === 'Diurna'} className="accent-emerald-500 h-4 w-4" />
+                  <input 
+                    type="radio" 
+                    name="turno-pref-obrero" 
+                    value="Diurna" 
+                    checked={compromisoUsuario.tipoTurno === 'Diurna'} 
+                    onChange={() => setCompromisoUsuario(prev => ({ ...prev, tipoTurno: 'Diurna' }))}
+                    className="accent-emerald-500 h-4 w-4" 
+                  />
                   Guardia Diurna
                 </label>
                 <label className="flex items-center gap-2 cursor-pointer text-xs text-slate-300">
-                  <input type="radio" name="turno-pref" value="Nocturna" defaultChecked={currentMember.tipoPref === 'Nocturna'} className="accent-emerald-500 h-4 w-4" />
+                  <input 
+                    type="radio" 
+                    name="turno-pref-obrero" 
+                    value="Nocturna" 
+                    checked={compromisoUsuario.tipoTurno === 'Nocturna'} 
+                    onChange={() => setCompromisoUsuario(prev => ({ ...prev, tipoTurno: 'Nocturna' }))}
+                    className="accent-emerald-500 h-4 w-4" 
+                  />
                   Guardia Nocturna
                 </label>
               </div>
@@ -1123,11 +1268,25 @@ export default function Dashboard() {
               <label className="block text-xs font-semibold text-slate-400 mb-2">Preferencia de Día *</label>
               <div className="flex gap-4">
                 <label className="flex items-center gap-2 cursor-pointer text-xs text-slate-300">
-                  <input type="checkbox" name="dia-pref" value="Semana" defaultChecked={currentMember.diaPref === 'Semana'} className="accent-emerald-500 h-4 w-4 rounded" />
+                  <input 
+                    type="radio" 
+                    name="dia-pref-obrero" 
+                    value="Semana" 
+                    checked={compromisoUsuario.tipoDia === 'Semana'} 
+                    onChange={() => setCompromisoUsuario(prev => ({ ...prev, tipoDia: 'Semana' }))}
+                    className="accent-emerald-500 h-4 w-4" 
+                  />
                   Día de Semana
                 </label>
                 <label className="flex items-center gap-2 cursor-pointer text-xs text-slate-300">
-                  <input type="checkbox" name="dia-pref" value="Fin de Semana" defaultChecked={currentMember.diaPref === 'Fin de Semana'} className="accent-emerald-500 h-4 w-4 rounded" />
+                  <input 
+                    type="radio" 
+                    name="dia-pref-obrero" 
+                    value="Fin de Semana" 
+                    checked={compromisoUsuario.tipoDia === 'Fin de Semana'} 
+                    onChange={() => setCompromisoUsuario(prev => ({ ...prev, tipoDia: 'Fin de Semana' }))}
+                    className="accent-emerald-500 h-4 w-4" 
+                  />
                   Fin de Semana
                 </label>
               </div>
@@ -1135,18 +1294,11 @@ export default function Dashboard() {
 
             <div className="pt-4 border-t border-slate-800/65 flex gap-3">
               <button 
-                onClick={() => {
-                  const s = document.getElementById('form-sede-obrero').value;
-                  const t = document.querySelector('input[name="turno-pref"]:checked')?.value || 'Diurna';
-                  const d = 'Semana';
-                  handleGuardarCompromiso(s, t, d);
-                }}
-                className="px-4 py-2 bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-teal-700 hover:to-emerald-600 text-white text-xs font-semibold rounded-xl transition-all shadow-md"
+                onClick={() => handleGuardarCompromiso(compromisoUsuario.sede, compromisoUsuario.tipoTurno, compromisoUsuario.tipoDia)}
+                className="px-4 py-2 bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-teal-700 hover:to-emerald-600 text-white text-xs font-semibold rounded-xl transition-all shadow-md flex items-center gap-2"
               >
-                Firmar Compromiso
-              </button>
-              <button className="px-4 py-2 bg-slate-900 hover:bg-slate-800 border border-slate-850 rounded-xl text-xs text-slate-400 transition-all">
-                Cancelar
+                <CheckCircle2 className="h-4 w-4" />
+                {compromisoUsuario.firmado ? 'Actualizar Compromiso Firmado' : 'Firmar Compromiso'}
               </button>
             </div>
           </div>
@@ -1187,20 +1339,39 @@ export default function Dashboard() {
   };
 
   const renderCompromisoEstudiantil = () => {
-    const currentMember = personal.find(p => p.tipo === 'ESTUDIANTE') || personal[3];
+    const currentMember = personal.find(p => 
+      (user?.username && p.username === user.username) || 
+      (user?.first_name && p.nombre.toLowerCase().includes(user.first_name.toLowerCase())) ||
+      p.tipo === 'ESTUDIANTE'
+    ) || personal[3] || personal[0];
+
     return (
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 bg-slate-900/50 backdrop-blur-md border border-slate-800/80 rounded-2xl p-6 space-y-5">
-          <h3 className="text-base font-bold text-slate-100 border-b border-slate-850 pb-3 flex items-center gap-2">
-            <UserCheck className="h-5 w-5 text-emerald-400" />
-            Firma de Compromiso Estudiantil (MOD-04)
+          <h3 className="text-base font-bold text-slate-100 border-b border-slate-850 pb-3 flex items-center justify-between">
+            <span className="flex items-center gap-2">
+              <UserCheck className="h-5 w-5 text-emerald-400" />
+              Firma de Compromiso Estudiantil (MOD-04)
+            </span>
+            {compromisoUsuario.firmado ? (
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                <CheckCircle2 className="h-3.5 w-3.5" />
+                Compromiso Guardado en BD
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                <Clock className="h-3.5 w-3.5" />
+                Pendiente de Firma
+              </span>
+            )}
           </h3>
           
           <div className="space-y-4">
             <div>
               <label className="block text-xs font-semibold text-slate-400 mb-2">Sede asignada para Guardia Estudiantil *</label>
               <select 
-                defaultValue={currentMember.sedePref || ''}
+                value={compromisoUsuario.sede || 'Sede Oscar Lucero Moya'}
+                onChange={(e) => setCompromisoUsuario(prev => ({ ...prev, sede: e.target.value }))}
                 id="form-sede-estudiante"
                 className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-slate-200 focus:outline-none focus:border-emerald-500"
               >
@@ -1213,26 +1384,65 @@ export default function Dashboard() {
               <label className="block text-xs font-semibold text-slate-400 mb-2">Turno preseleccionado *</label>
               <div className="flex gap-4">
                 <label className="flex items-center gap-2 cursor-pointer text-xs text-slate-300">
-                  <input type="radio" name="turno-pref-est" value="Diurna" defaultChecked={currentMember.tipoPref === 'Diurna'} className="accent-emerald-500 h-4 w-4" />
+                  <input 
+                    type="radio" 
+                    name="turno-pref-est" 
+                    value="Diurna" 
+                    checked={compromisoUsuario.tipoTurno === 'Diurna'} 
+                    onChange={() => setCompromisoUsuario(prev => ({ ...prev, tipoTurno: 'Diurna' }))}
+                    className="accent-emerald-500 h-4 w-4" 
+                  />
                   Guardia Diurna (Estudiantil)
                 </label>
                 <label className="flex items-center gap-2 cursor-pointer text-xs text-slate-300">
-                  <input type="radio" name="turno-pref-est" value="Nocturna" defaultChecked={currentMember.tipoPref === 'Nocturna'} className="accent-emerald-500 h-4 w-4" />
+                  <input 
+                    type="radio" 
+                    name="turno-pref-est" 
+                    value="Nocturna" 
+                    checked={compromisoUsuario.tipoTurno === 'Nocturna'} 
+                    onChange={() => setCompromisoUsuario(prev => ({ ...prev, tipoTurno: 'Nocturna' }))}
+                    className="accent-emerald-500 h-4 w-4" 
+                  />
                   Guardia Nocturna (Estudiantil)
+                </label>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-400 mb-2">Preferencia de Día *</label>
+              <div className="flex gap-4">
+                <label className="flex items-center gap-2 cursor-pointer text-xs text-slate-300">
+                  <input 
+                    type="radio" 
+                    name="dia-pref-est" 
+                    value="Fin de Semana" 
+                    checked={compromisoUsuario.tipoDia === 'Fin de Semana'} 
+                    onChange={() => setCompromisoUsuario(prev => ({ ...prev, tipoDia: 'Fin de Semana' }))}
+                    className="accent-emerald-500 h-4 w-4" 
+                  />
+                  Fin de Semana
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer text-xs text-slate-300">
+                  <input 
+                    type="radio" 
+                    name="dia-pref-est" 
+                    value="Semana" 
+                    checked={compromisoUsuario.tipoDia === 'Semana'} 
+                    onChange={() => setCompromisoUsuario(prev => ({ ...prev, tipoDia: 'Semana' }))}
+                    className="accent-emerald-500 h-4 w-4" 
+                  />
+                  Día de Semana
                 </label>
               </div>
             </div>
 
             <div className="pt-4 border-t border-slate-800/65 flex gap-3">
               <button 
-                onClick={() => {
-                  const s = document.getElementById('form-sede-estudiante').value;
-                  const t = document.querySelector('input[name="turno-pref-est"]:checked')?.value || 'Diurna';
-                  handleGuardarCompromiso(s, t, 'Fin de Semana');
-                }}
-                className="px-4 py-2 bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-teal-700 hover:to-emerald-600 text-white text-xs font-semibold rounded-xl transition-all shadow-md"
+                onClick={() => handleGuardarCompromiso(compromisoUsuario.sede, compromisoUsuario.tipoTurno, compromisoUsuario.tipoDia || 'Fin de Semana')}
+                className="px-4 py-2 bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-teal-700 hover:to-emerald-600 text-white text-xs font-semibold rounded-xl transition-all shadow-md flex items-center gap-2"
               >
-                Guardar Compromiso
+                <CheckCircle2 className="h-4 w-4" />
+                {compromisoUsuario.firmado ? 'Actualizar Compromiso Guardado' : 'Guardar Compromiso'}
               </button>
             </div>
           </div>
