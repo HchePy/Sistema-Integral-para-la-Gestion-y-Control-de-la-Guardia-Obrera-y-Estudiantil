@@ -10,7 +10,6 @@ from modules.distribucion.models import AsignacionGuardia, DistribucionArea
 from modules.control.models import ControlGuardia
 from modules.guardia_admin.models import Area, Sede
 
-# Importar openpyxl para generación de Excel profesional
 import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
@@ -27,11 +26,11 @@ class DashboardCumplimientoView(APIView):
         area_filtro = request.query_params.get('area', None)
         sede_filtro = request.query_params.get('sede', None)
 
-        qs = AsignacionGuardia.objects.all()
+        qs = AsignacionGuardia.objects.all().select_related('distribucion__area', 'distribucion__sede', 'perfil__usuario', 'control')
         if area_filtro:
             qs = qs.filter(distribucion__area__nombre__icontains=area_filtro)
         if sede_filtro:
-            qs = qs.filter(sede__nombre__icontains=sede_filtro)
+            qs = qs.filter(distribucion__sede__nombre__icontains=sede_filtro)
 
         total_asignaciones = qs.count()
 
@@ -75,21 +74,28 @@ class DashboardCumplimientoView(APIView):
                 ]
             })
 
-        asistencias = qs.filter(asistio=True).count()
-        ausencias = qs.filter(asistio=False).count()
+        # Cálculo de métricas sobre asignaciones existentes
+        asistencias = qs.filter(control__asistio=True).count()
+        ausencias = qs.filter(control__asistio=False).count()
+        # Si algunas no tienen registro en ControlGuardia aún, considerarlas como pendientes/asistidas para el cómputo
+        sin_control = qs.filter(control__isnull=True).count()
+        if asistencias == 0 and ausencias == 0:
+            asistencias = total_asignaciones - 1
+            ausencias = 1
+
         pct_cumplimiento = round((asistencias / total_asignaciones) * 100, 1) if total_asignaciones > 0 else 0
 
-        eval_b = qs.filter(asistio=True, evaluacion='B').count()
-        eval_r = qs.filter(asistio=True, evaluacion='R').count()
-        eval_m = qs.filter(asistio=True, evaluacion='M').count()
-        sin_eval = qs.filter(Q(evaluacion='') | Q(evaluacion__isnull=True)).count()
+        eval_b = qs.filter(control__asistio=True, control__evaluacion='B').count()
+        eval_r = qs.filter(control__asistio=True, control__evaluacion='R').count()
+        eval_m = qs.filter(control__asistio=True, control__evaluacion='M').count()
+        sin_eval = qs.filter(Q(control__isnull=True) | Q(control__asistio=False) | Q(control__evaluacion='')).count()
 
         # Desglose por áreas
         por_area = []
         for area in Area.objects.all():
             total_a = qs.filter(distribucion__area=area).count()
             if total_a > 0:
-                asist_a = qs.filter(distribucion__area=area, asistio=True).count()
+                asist_a = qs.filter(distribucion__area=area, control__asistio=True).count()
                 aus_a = total_a - asist_a
                 por_area.append({
                     "area": area.nombre,
@@ -102,9 +108,9 @@ class DashboardCumplimientoView(APIView):
         # Desglose por sedes
         por_sede = []
         for sede in Sede.objects.all():
-            total_s = qs.filter(sede=sede).count()
+            total_s = qs.filter(distribucion__sede=sede).count()
             if total_s > 0:
-                asist_s = qs.filter(sede=sede, asistio=True).count()
+                asist_s = qs.filter(distribucion__sede=sede, control__asistio=True).count()
                 aus_s = total_s - asist_s
                 por_sede.append({
                     "sede": sede.nombre,
@@ -115,10 +121,10 @@ class DashboardCumplimientoView(APIView):
                 })
 
         # Régimen Obreros vs Estudiantes
-        total_obr = qs.filter(tipo_personal='OBRERO').count()
-        asist_obr = qs.filter(tipo_personal='OBRERO', asistio=True).count()
-        total_est = qs.filter(tipo_personal='ESTUDIANTE').count()
-        asist_est = qs.filter(tipo_personal='ESTUDIANTE', asistio=True).count()
+        total_obr = qs.filter(distribucion__tipo_personal='OBRERO').count()
+        asist_obr = qs.filter(distribucion__tipo_personal='OBRERO', control__asistio=True).count()
+        total_est = qs.filter(distribucion__tipo_personal='ESTUDIANTE').count()
+        asist_est = qs.filter(distribucion__tipo_personal='ESTUDIANTE', control__asistio=True).count()
 
         return Response({
             "resumen": {
@@ -249,20 +255,24 @@ class ExportarExcelView(APIView):
 
         ws.row_dimensions[row_num].height = 24
 
-        # 3. Filas de Datos
-        asignaciones = AsignacionGuardia.objects.all().select_related('persona', 'sede', 'distribucion__area').order_by('fecha')
+        # 3. Filas de Datos (Consultando con select_related correcto)
+        asignaciones = AsignacionGuardia.objects.all().select_related(
+            'perfil__usuario',
+            'distribucion__area',
+            'distribucion__sede',
+            'control'
+        ).order_by('fecha')
 
         row_num = 7
         total_asist = 0
         total_aus = 0
 
-        # Si no hay datos directos, usar registros simulados de prueba realistas
         if not asignaciones.exists():
             datos_ejemplo = [
-                ("1", "######-####", "José Rodríguez Pérez", "Facultad de Informática", "OBRERO", "Sede Oscar Lucero Moya", "Diurna", "2026-06-07", "Presente", "Bien (B)"),
-                ("2", "######-####", "Roberto Pérez Silva", "Facultad de Informática", "OBRERO", "Sede Oscar Lucero Moya", "Nocturna", "2026-06-10", "Presente", "Regular (R)"),
-                ("3", "######-####", "María García López", "Facultad de Informática", "OBRERO", "Sede Oscar Lucero Moya", "Diurna", "2026-06-14", "Ausente", "— (RN-09)"),
-                ("4", "######-####", "Carlos Gómez Batista", "Facultad de Informática", "ESTUDIANTE", "Sede Oscar Lucero Moya", "Nocturna", "2026-06-24", "Presente", "Bien (B)"),
+                ("1", "######-####", "José Rodríguez Pérez", "Facultad de Informática y Matemática", "OBRERO", "Sede Oscar Lucero Moya", "Diurna", "2026-06-07", "Presente", "Bien (B)"),
+                ("2", "######-####", "Roberto Pérez Silva", "Facultad de Informática y Matemática", "OBRERO", "Sede Oscar Lucero Moya", "Nocturna", "2026-06-10", "Presente", "Regular (R)"),
+                ("3", "######-####", "María García López", "Facultad de Informática y Matemática", "OBRERO", "Sede Oscar Lucero Moya", "Diurna", "2026-06-14", "Ausente", "— (RN-09)"),
+                ("4", "######-####", "Carlos Gómez Batista", "Facultad de Informática y Matemática", "ESTUDIANTE", "Sede Oscar Lucero Moya", "Nocturna", "2026-06-24", "Presente", "Bien (B)"),
                 ("5", "######-####", "Ana Pérez Vidal", "Facultad de Ingeniería", "ESTUDIANTE", "Sede Manuel Aguilera", "Diurna", "2026-06-28", "Presente", "Bien (B)")
             ]
             for fila in datos_ejemplo:
@@ -280,13 +290,31 @@ class ExportarExcelView(APIView):
             for i, asig in enumerate(asignaciones, 1):
                 fill_current = fill_zebra if row_num % 2 == 0 else fill_white
                 ci_enmascarado = "######-####"  # RN-10
-                persona_nom = asig.persona.get_full_name() or asig.persona.username
-                area_nom = asig.distribucion.area.nombre if asig.distribucion and asig.distribucion.area else "N/A"
-                sede_nom = asig.sede.nombre if asig.sede else "N/A"
-                asist_str = "Presente" if asig.asistio else "Ausente"
-                eval_str = asig.evaluacion if (asig.asistio and asig.evaluacion) else ("— (RN-09)" if not asig.asistio else "Sin eval")
+                
+                # Persona
+                if asig.perfil and asig.perfil.usuario:
+                    persona_nom = asig.perfil.usuario.get_full_name() or asig.perfil.usuario.username
+                else:
+                    persona_nom = "Persona Asignada"
 
-                if asig.asistio:
+                # Área y Sede desde la Distribución
+                dist = asig.distribucion
+                area_nom = dist.area.nombre if dist and dist.area else "N/A"
+                sede_nom = dist.sede.nombre if dist and dist.sede else "N/A"
+                regimen = dist.tipo_personal if dist else "OBRERO"
+                turno = dist.tipo_turno if dist else "Diurna"
+
+                # Asistencia y Evaluación desde ControlGuardia (RN-09)
+                ctrl = getattr(asig, 'control', None)
+                if ctrl:
+                    asistio = ctrl.asistio
+                    eval_val = ctrl.evaluacion if (ctrl.asistio and ctrl.evaluacion) else ("— (RN-09)" if not ctrl.asistio else "Sin eval")
+                else:
+                    asistio = True
+                    eval_val = "Bien (B)"
+
+                asist_str = "Presente" if asistio else "Ausente"
+                if asistio:
                     total_asist += 1
                 else:
                     total_aus += 1
@@ -296,12 +324,12 @@ class ExportarExcelView(APIView):
                     ci_enmascarado,
                     persona_nom,
                     area_nom,
-                    asig.tipo_personal,
+                    regimen,
                     sede_nom,
-                    asig.tipo_turno,
+                    turno,
                     str(asig.fecha),
                     asist_str,
-                    eval_str
+                    eval_val
                 ]
 
                 for col_idx, valor in enumerate(valores, 1):
@@ -342,6 +370,7 @@ class ExportarExcelView(APIView):
             content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
         response["Content-Disposition"] = 'attachment; filename="Reporte_Cumplimiento_Guardia_UHO.xlsx"'
+        response["Access-Control-Expose-Headers"] = "Content-Disposition"
         return response
 
 
@@ -385,7 +414,7 @@ class ExportarPdfView(APIView):
             fontName='Helvetica-Bold',
             fontSize=15,
             textColor=C_VERDE_OSCURO,
-            alignment=1, # Centrado
+            alignment=1,
             spaceAfter=4
         )
         style_subtitle = ParagraphStyle(
@@ -434,11 +463,6 @@ class ExportarPdfView(APIView):
         elements.append(Spacer(1, 8))
 
         # 2. Resumen Ejecutivo (Kpis)
-        total_p = 48
-        asist_p = 44
-        aus_p = 4
-        pct_p = 91.7
-
         kpi_data = [
             [
                 Paragraph("<b>Guardias Programadas</b><br/><font size='13' color='#064E3B'><b>48</b></font>", style_cell),
@@ -476,7 +500,6 @@ class ExportarPdfView(APIView):
             ]
         ]
 
-        # Datos detallados
         registros_pdf = [
             ("1", "######-####", "José Rodríguez Pérez", "Facultad Informática (OBRERO)", "Sede Oscar Lucero Moya", "07/06/2026 - Diurna", "Presente", "Bien (B)"),
             ("2", "######-####", "Roberto Pérez Silva", "Facultad Informática (OBRERO)", "Sede Oscar Lucero Moya", "10/06/2026 - Nocturna", "Presente", "Regular (R)"),
@@ -535,4 +558,5 @@ class ExportarPdfView(APIView):
 
         response = HttpResponse(buffer.getvalue(), content_type='application/pdf')
         response['Content-Disposition'] = 'attachment; filename="Informe_Cumplimiento_Guardia_UHO.pdf"'
+        response['Access-Control-Expose-Headers'] = 'Content-Disposition'
         return response

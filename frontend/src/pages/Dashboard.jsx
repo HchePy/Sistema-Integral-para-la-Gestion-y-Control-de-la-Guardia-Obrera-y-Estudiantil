@@ -640,15 +640,22 @@ export default function Dashboard() {
   const handleDescargarReporteExcel = async () => {
     showToast('📊 Generando matriz oficial de cumplimiento en Excel (.xlsx)...');
     try {
-      const response = await API.get('reportes/exportar-excel/', { responseType: 'blob' });
-      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const response = await API.get('reportes/exportar-excel/', { 
+        responseType: 'blob' 
+      });
+      const blob = new Blob([response.data], { 
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' 
+      });
+      const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.setAttribute('download', 'Reporte_Cumplimiento_Guardia_UHO.xlsx');
+      link.download = 'Reporte_Cumplimiento_Guardia_UHO.xlsx';
       document.body.appendChild(link);
       link.click();
-      link.remove();
-      window.URL.revokeObjectURL(url);
+      setTimeout(() => {
+        if (link.parentNode) link.parentNode.removeChild(link);
+        window.URL.revokeObjectURL(url);
+      }, 1000);
       showToast('✅ Matriz en Excel descargada exitosamente.');
     } catch (e) {
       console.warn('Descarga Excel fallback:', e);
@@ -659,15 +666,22 @@ export default function Dashboard() {
   const handleDescargarReportePdf = async () => {
     showToast('📄 Generando informe institucional de guardia en PDF...');
     try {
-      const response = await API.get('reportes/exportar-pdf/', { responseType: 'blob' });
-      const url = window.URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }));
+      const response = await API.get('reportes/exportar-pdf/', { 
+        responseType: 'blob' 
+      });
+      const blob = new Blob([response.data], { 
+        type: 'application/pdf' 
+      });
+      const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.setAttribute('download', 'Informe_Cumplimiento_Guardia_UHO.pdf');
+      link.download = 'Informe_Cumplimiento_Guardia_UHO.pdf';
       document.body.appendChild(link);
       link.click();
-      link.remove();
-      window.URL.revokeObjectURL(url);
+      setTimeout(() => {
+        if (link.parentNode) link.parentNode.removeChild(link);
+        window.URL.revokeObjectURL(url);
+      }, 1000);
       showToast('✅ Informe oficial en PDF descargado exitosamente.');
     } catch (e) {
       console.warn('Descarga PDF fallback:', e);
