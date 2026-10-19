@@ -522,6 +522,8 @@ export default function Dashboard() {
   const handleGuardarCompromiso = async (sede, tipo, dia) => {
     try {
       await API.post('compromiso/compromisos/firmar/', {
+        sede: sede,
+        sede_nombre: sede,
         tipo_turno: tipo,
         tipo_dia: dia
       });

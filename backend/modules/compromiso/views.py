@@ -82,15 +82,15 @@ class CompromisoViewSet(viewsets.ModelViewSet):
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
-        sede_id = request.data.get('sede_id')
-        if not sede_id:
-            # Si no viene sede, tomar la que tenía en perfil o la primera activa
+        sede_raw = request.data.get('sede_id') or request.data.get('sede') or request.data.get('sede_nombre')
+        sede = None
+        if sede_raw:
+            if str(sede_raw).isdigit():
+                sede = Sede.objects.filter(id=int(sede_raw)).first()
+            else:
+                sede = Sede.objects.filter(nombre__iexact=str(sede_raw).strip()).first()
+        if not sede:
             sede = perfil.sedePref or Sede.objects.filter(activo=True).first()
-        else:
-            try:
-                sede = Sede.objects.get(id=sede_id)
-            except Sede.DoesNotExist:
-                return Response({"error": "Sede no encontrada."}, status=status.HTTP_404_NOT_FOUND)
 
         tipo_turno = request.data.get('tipo_turno', perfil.tipoPref or 'Diurna')
         tipo_dia = request.data.get('tipo_dia', perfil.diaPref or 'Semana')
@@ -118,6 +118,14 @@ class CompromisoViewSet(viewsets.ModelViewSet):
                 'es_estudiante': es_estudiante,
             }
         )
+
+        # Actualizar perfil del usuario para sincronía inmediata de estado
+        perfil.comprometido = True
+        if sede:
+            perfil.sedePref = sede
+        perfil.tipoPref = tipo_turno
+        perfil.diaPref = tipo_dia
+        perfil.save()
 
         serializer = self.get_serializer(compromiso)
         return Response({
