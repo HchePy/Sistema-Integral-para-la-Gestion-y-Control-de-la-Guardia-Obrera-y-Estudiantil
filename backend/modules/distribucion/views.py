@@ -29,6 +29,18 @@ class DistribucionAreaViewSet(viewsets.ModelViewSet):
             return [IsAuthenticated(), HasRole.for_roles(ROLE_SUPERADMIN, ROLE_JEFE_SEGURIDAD, ROLE_RESPONSABLE_AREA)()]
         return [IsAuthenticated()]
 
+    def perform_create(self, serializer):
+        kwargs = {}
+        if not serializer.validated_data.get('periodo'):
+            periodo = PeriodoGuardia.objects.filter(activo=True).first() or PeriodoGuardia.objects.first()
+            if periodo:
+                kwargs['periodo'] = periodo
+        if not serializer.validated_data.get('mes'):
+            kwargs['mes'] = timezone.now().month
+        if not serializer.validated_data.get('año'):
+            kwargs['año'] = timezone.now().year
+        serializer.save(**kwargs)
+
     def get_queryset(self):
         user = self.request.user
         role = getattr(user, 'role', '')

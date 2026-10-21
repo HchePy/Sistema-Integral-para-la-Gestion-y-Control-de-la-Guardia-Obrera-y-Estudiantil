@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
-from .models import Cargo, Contrato, Sede, Area, Departamento, Perfil
+from .models import Cargo, Contrato, Sede, Area, Departamento, Perfil, ConfiguracionReglaGuardia
 
 User = get_user_model()
 
@@ -84,3 +84,10 @@ class PerfilSerializer(serializers.ModelSerializer):
         rep['depto_info'] = DepartamentoSerializer(instance.depto).data if instance.depto else None
         rep['sedePref_info'] = SedeSerializer(instance.sedePref).data if instance.sedePref else None
         return rep
+
+
+class ConfiguracionReglaGuardiaSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ConfiguracionReglaGuardia
+        fields = '__all__'
+

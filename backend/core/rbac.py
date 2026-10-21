@@ -58,3 +58,43 @@ class IsInstitutionalStaff(permissions.BasePermission):
             
         staff_roles = [ROLE_SUPERADMIN, ROLE_JEFE_SEGURIDAD, ROLE_RESPONSABLE_AREA, ROLE_RESPONSABLE_DEPARTAMENTO, ROLE_TRABAJADOR]
         return request.user.role in staff_roles
+
+
+def user_has_perm(user, perm_code):
+    """
+    Comprueba si un usuario tiene un permiso específico por rol de superusuario
+    o a través de los permisos granulares asignados a su Cargo institucional (RF-0111, RF-0112).
+    """
+    if not user or not user.is_authenticated:
+        return False
+    if user.is_superuser or getattr(user, 'role', '') == ROLE_SUPERADMIN:
+        return True
+    
+    perfil = getattr(user, 'perfil', None)
+    if perfil and perfil.cargo and isinstance(perfil.cargo.permisos, list):
+        if perm_code in perfil.cargo.permisos or '*' in perfil.cargo.permisos:
+            return True
+            
+    return False
+
+
+class HasDynamicPermission(permissions.BasePermission):
+    """
+    Verifica si el usuario tiene el permiso específico asignado directamente o
+    heredado mediante los permisos granulares de su Cargo institucional (RF-0111 / RF-0112).
+    """
+    def __init__(self, required_permission):
+        self.required_permission = required_permission
+
+    @classmethod
+    def for_permission(cls, perm_code):
+        class DynamicPermissionCheck(cls):
+            def __init__(self):
+                super().__init__(perm_code)
+        return DynamicPermissionCheck
+
+    def has_permission(self, request, view):
+        if not request.user or not request.user.is_authenticated:
+            return False
+        return user_has_perm(request.user, self.required_permission)
+

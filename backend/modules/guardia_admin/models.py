@@ -176,3 +176,42 @@ class Perfil(AuditableModel):
 
     def __str__(self):
         return f"Perfil de {self.usuario.get_full_name() or self.usuario.username} ({self.ci})"
+
+
+class ConfiguracionReglaGuardia(AuditableModel):
+    """
+    Parámetros globales del sistema configurables por el Superadmin (RN-02).
+    Define los valores por defecto del tipo de guardia y tipo de día según:
+    - tipo de usuario (OBRERO / ESTUDIANTE)
+    - sexo (M / F)
+    """
+    TIPO_CHOICES = [
+        ('OBRERO', 'Obrero'),
+        ('ESTUDIANTE', 'Estudiante'),
+    ]
+    SEXO_CHOICES = [
+        ('M', 'Masculino'),
+        ('F', 'Femenino'),
+    ]
+    TURNO_CHOICES = [
+        ('Diurna', 'Diurna'),
+        ('Nocturna', 'Nocturna'),
+    ]
+    DIA_CHOICES = [
+        ('Semana', 'Día de Semana'),
+        ('Fin de Semana', 'Fin de Semana'),
+    ]
+
+    tipo_usuario = models.CharField(max_length=20, choices=TIPO_CHOICES, verbose_name="Tipo de Usuario")
+    sexo = models.CharField(max_length=1, choices=SEXO_CHOICES, verbose_name="Sexo")
+    tipo_turno_defecto = models.CharField(max_length=20, choices=TURNO_CHOICES, default='Diurna', verbose_name="Turno por Defecto")
+    tipo_dia_defecto = models.CharField(max_length=20, choices=DIA_CHOICES, default='Semana', verbose_name="Tipo de Día por Defecto")
+
+    class Meta:
+        verbose_name = "Configuración de Regla de Guardia (RN-02)"
+        verbose_name_plural = "Configuraciones de Reglas de Guardia (RN-02)"
+        unique_together = ['tipo_usuario', 'sexo']
+
+    def __str__(self):
+        return f"RN-02: {self.tipo_usuario} ({self.sexo}) -> {self.tipo_turno_defecto} / {self.tipo_dia_defecto}"
+

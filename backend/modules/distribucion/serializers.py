@@ -7,6 +7,9 @@ class DistribucionAreaSerializer(serializers.ModelSerializer):
     """
     Serializador de Distribución de Días por Área (RF-0601, RF-0602).
     """
+    periodo = serializers.PrimaryKeyRelatedField(queryset=PeriodoGuardia.objects.all(), required=False, allow_null=True)
+    mes = serializers.IntegerField(required=False, default=6)
+    año = serializers.IntegerField(required=False, default=2026)
     periodo_nombre = serializers.ReadOnlyField(source='periodo.nombre')
     area_nombre = serializers.ReadOnlyField(source='area.nombre')
     departamento_nombre = serializers.ReadOnlyField(source='departamento.nombre')
@@ -24,6 +27,19 @@ class DistribucionAreaSerializer(serializers.ModelSerializer):
             'cantidad_requerida', 'min_requerido_sede', 'alerta_minimo_sede',
             'total_asignados', 'creado_en', 'actualizado_en'
         ]
+
+    def to_internal_value(self, data):
+        data = data.copy() if hasattr(data, 'copy') else dict(data)
+        if 'dias' in data and 'dias_asignados' not in data:
+            data['dias_asignados'] = data['dias']
+        if 'tipo_turno' in data and isinstance(data['tipo_turno'], str):
+            val = data['tipo_turno'].strip().capitalize()
+            data['tipo_turno'] = 'Nocturna' if 'nocturna' in val.lower() else 'Diurna'
+        if not data.get('periodo'):
+            p = PeriodoGuardia.objects.filter(activo=True).first() or PeriodoGuardia.objects.first()
+            if p:
+                data['periodo'] = p.id
+        return super().to_internal_value(data)
 
     def get_min_requerido_sede(self, obj):
         if obj.tipo_personal == 'ESTUDIANTE':

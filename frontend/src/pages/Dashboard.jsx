@@ -93,6 +93,15 @@ export default function Dashboard() {
   const [fechaControl, setFechaControl] = useState('2026-06-07');
   const [filtroEstadoControl, setFiltroEstadoControl] = useState('TODOS'); // 'TODOS' | 'PENDIENTES' | 'PRESENTES' | 'AUSENTES' | 'JUSTIFICADOS'
 
+  // MOD-06 Segregación por Rol y Asignación Nominal (RF-0603)
+  const [subTabDistribucion, setSubTabDistribucion] = useState('INSTITUCIONAL');
+  const [distribucionSeleccionadaId, setDistribucionSeleccionadaId] = useState(null);
+  const [personaSeleccionadaPorDia, setPersonaSeleccionadaPorDia] = useState({});
+  const [filtroAreaNominal, setFiltroAreaNominal] = useState('TODAS');
+
+  // Parámetros Globales RN-02
+  const [reglasGuardia, setReglasGuardia] = useState([]);
+
   // MOD-08: Estadísticas y Dashboard de Cumplimiento (Cargado desde /api/control/historial/)
   const [datosCumplimiento, setDatosCumplimiento] = useState({
     resumen: {
@@ -451,6 +460,31 @@ export default function Dashboard() {
         }
       } catch (e) {
         console.warn('Error al sincronizar compromiso:', e);
+      }
+
+      // 14. Reglas Globales de Guardia RN-02
+      try {
+        const resReglas = await API.get('guardia-admin/reglas-guardia/');
+        if (resReglas.data && resReglas.data.length > 0) {
+          setReglasGuardia(resReglas.data);
+
+          // Si el compromiso no está firmado aún, preconfigurar valores por defecto según RN-02
+          const sexo = perfilUsuario.sexo || 'M';
+          const tipoUsuario = (user?.role === 'ESTUDIANTE' || perfilUsuario.tipo === 'ESTUDIANTE') ? 'ESTUDIANTE' : 'OBRERO';
+          const reglaMatch = resReglas.data.find(r => r.tipo_usuario === tipoUsuario && r.sexo === sexo);
+          if (reglaMatch) {
+            setCompromisoUsuario(prev => {
+              if (prev.firmado) return prev;
+              return {
+                ...prev,
+                tipoTurno: reglaMatch.tipo_turno_defecto,
+                tipoDia: reglaMatch.tipo_dia_defecto
+              };
+            });
+          }
+        }
+      } catch (e) {
+        console.warn('Error fetching reglas guardia:', e);
       }
     };
 
@@ -821,33 +855,104 @@ export default function Dashboard() {
       showToast(`⚠️ Alerta RN-07: La cuota asignada (${formDistribucion.cantidadRequerida}) está por debajo del mínimo de la sede (${minimoSede}).`, 'warn');
     }
 
-    const nuevaDist = {
-      id: Date.now(),
-      area: areaSeleccionada?.nombre || 'Facultad de Informática y Matemática',
-      depto: areaSeleccionada?.nombre || 'Facultad de Informática y Matemática',
-      sede: sedeSeleccionada?.nombre || 'Sede Oscar Lucero Moya',
-      tipo: formDistribucion.tipoGuardia,
-      tipoPersonal: formDistribucion.tipoPersonal,
-      dias: formDistribucion.dias,
-      cant: Number(formDistribucion.cantidadRequerida)
+    const payload = {
+      periodo: periodoActivo?.id,
+      area: Number(formDistribucion.areaId),
+      sede: Number(formDistribucion.sedeId),
+      tipo_personal: formDistribucion.tipoPersonal,
+      tipo_turno: formDistribucion.tipoGuardia,
+      dias_asignados: formDistribucion.dias,
+      cantidad_requerida: Number(formDistribucion.cantidadRequerida),
+      mes: 6,
+      año: 2026
     };
 
     try {
-      await API.post('distribucion/areas/', {
-        area: Number(formDistribucion.areaId),
-        sede: Number(formDistribucion.sedeId),
-        tipo_personal: formDistribucion.tipoPersonal,
-        tipo_turno: formDistribucion.tipoGuardia.toUpperCase(),
-        dias: formDistribucion.dias,
-        cantidad_requerida: Number(formDistribucion.cantidadRequerida)
-      });
-      showToast('📅 Distribución mensual sincronizada con la base de datos.');
+      const res = await API.post('distribucion/areas/', payload);
+      const d = res.data;
+      const createdDist = {
+        id: d.id,
+        areaId: d.area,
+        area: d.area_nombre || areaSeleccionada?.nombre || 'Facultad UHO',
+        depto: d.departamento_nombre || areaSeleccionada?.nombre || 'General',
+        sedeId: d.sede,
+        sede: d.sede_nombre || sedeSeleccionada?.nombre || 'Sede UHO',
+        tipo: d.tipo_turno || formDistribucion.tipoGuardia,
+        tipoPersonal: d.tipo_personal || formDistribucion.tipoPersonal,
+        dias: d.dias_asignados || formDistribucion.dias,
+        cant: d.cantidad_requerida || Number(formDistribucion.cantidadRequerida)
+      };
+      setDistribuciones(prev => [createdDist, ...prev]);
+      showToast('📅 Distribución mensual guardada y sincronizada en BD.');
     } catch (e) {
       console.warn('Persistencia local distribución fallback:', e);
-      showToast('📅 Distribución de días guardada en el calendario.');
+      const nuevaDist = {
+        id: Date.now(),
+        areaId: Number(formDistribucion.areaId),
+        area: areaSeleccionada?.nombre || 'Facultad de Informática y Matemática',
+        depto: areaSeleccionada?.nombre || 'Facultad de Informática y Matemática',
+        sedeId: Number(formDistribucion.sedeId),
+        sede: sedeSeleccionada?.nombre || 'Sede Oscar Lucero Moya',
+        tipo: formDistribucion.tipoGuardia,
+        tipoPersonal: formDistribucion.tipoPersonal,
+        dias: formDistribucion.dias,
+        cant: Number(formDistribucion.cantidadRequerida)
+      };
+      setDistribuciones(prev => [nuevaDist, ...prev]);
+      showToast('📅 Distribución guardada localmente.');
+    }
+  };
+
+  // RF-0603: Asignación Nominal por el Responsable de Área
+  const handleCrearAsignacionNominal = async (distId, fechaStr, perfilId) => {
+    if (!distId || !fechaStr || !perfilId) {
+      showToast('⚠️ Seleccione la distribución, la fecha y la persona a asignar.', 'warn');
+      return;
     }
 
-    setDistribuciones(prev => [nuevaDist, ...prev]);
+    const personaObj = personal.find(p => p.id === Number(perfilId));
+    const distObj = distribuciones.find(d => d.id === Number(distId));
+
+    try {
+      const res = await API.post('distribucion/asignaciones/', {
+        distribucion: Number(distId),
+        perfil: Number(perfilId),
+        fecha: fechaStr
+      });
+      const data = res.data;
+      const nuevaAsig = {
+        id: data.id,
+        distribucionId: Number(distId),
+        fecha: data.fecha,
+        personaId: data.perfil,
+        persona_nombre: data.persona_nombre || personaObj?.nombre || 'Persona Asignada',
+        persona_ci: data.persona_ci || personaObj?.ci || '',
+        tipo: data.tipo_personal || personaObj?.tipo || 'OBRERO',
+        sede: data.sede_nombre || distObj?.sede || 'Sede UHO',
+        tipoGuardia: data.tipo_turno || distObj?.tipo || 'Diurna',
+        estado: 'PENDIENTE',
+        asistio: null,
+        evaluacion: '',
+        observaciones: ''
+      };
+      setAsignaciones(prev => [nuevaAsig, ...prev]);
+      showToast(`✅ ${personaObj?.nombre || 'Persona'} asignado(a) al ${fechaStr} exitosamente (RF-0603).`);
+      setPersonaSeleccionadaPorDia(prev => ({ ...prev, [fechaStr]: '' }));
+    } catch (err) {
+      const errorMsg = err.response?.data?.error || err.response?.data?.detail || (err.response?.data?.non_field_errors ? err.response?.data?.non_field_errors[0] : null) || 'Error al asignar persona.';
+      showToast(`❌ ${Array.isArray(errorMsg) ? errorMsg.join(' ') : errorMsg}`, 'error');
+    }
+  };
+
+  const handleEliminarAsignacionNominal = async (asigId) => {
+    try {
+      await API.delete(`distribucion/asignaciones/${asigId}/`);
+      setAsignaciones(prev => prev.filter(a => a.id !== asigId));
+      showToast('🗑️ Asignación eliminada correctamente de BD.');
+    } catch (err) {
+      setAsignaciones(prev => prev.filter(a => a.id !== asigId));
+      showToast('🗑️ Asignación removida del calendario.');
+    }
   };
 
   // --- MOD-07: CONTROL DE GUARDIA DIARIO Y EVALUACIONES ---
@@ -1708,6 +1813,30 @@ export default function Dashboard() {
   };
 
   const renderDistribucion = () => {
+    // Determinar permisos y roles
+    const esSuperadmin = user?.role === 'SUPERADMIN';
+    const esJefeSeguridad = user?.role === 'JEFE_SEGURIDAD';
+    const esResponsable = ['RESPONSABLE_AREA', 'RESPONSABLE_DEPARTAMENTO'].includes(user?.role);
+
+    // Área activa para la vista nominal: Si es responsable, su propia área; si es superadmin/jefe, la seleccionada
+    const areaResponsableNombre = perfilUsuario.area || user?.departamento || (nomencladores.areas[0]?.nombre || '');
+    const areaActivaNominal = esSuperadmin ? (filtroAreaNominal === 'TODAS' ? (nomencladores.areas[0]?.nombre || '') : filtroAreaNominal) : areaResponsableNombre;
+
+    // Distribuciones filtradas para el área activa
+    const distribucionesArea = distribuciones.filter(d => 
+      !areaActivaNominal || d.area === areaActivaNominal || d.depto === areaActivaNominal
+    );
+
+    // Distribución seleccionada actualmente para asignación nominal
+    const distSeleccionada = distribuciones.find(d => d.id === distribucionSeleccionadaId) || distribucionesArea[0] || distribuciones[0];
+
+    // Personal elegible del potencial aprobado del área (RN-05)
+    const personalAreaElegible = personal.filter(p => {
+      const matchArea = !areaActivaNominal || p.area === areaActivaNominal;
+      const matchTipo = !distSeleccionada || p.tipo === distSeleccionada.tipoPersonal;
+      return matchArea && matchTipo;
+    });
+
     const areaSel = nomencladores.areas.find(a => a.id === Number(formDistribucion.areaId));
     const sedeSel = nomencladores.sedes.find(s => s.id === Number(formDistribucion.sedeId));
     const esAreaSinEstudiantes = formDistribucion.tipoPersonal === 'ESTUDIANTE' && areaSel && !areaSel.tieneEstudiantes;
@@ -1716,156 +1845,466 @@ export default function Dashboard() {
 
     return (
       <div className="space-y-6">
-        <div>
-          <h3 className="text-base font-bold text-slate-100">Distribución de Turnos de Guardia (MOD-06)</h3>
-          <p className="text-xs text-slate-400">Asignación nominal y mensual de cuotas y fechas institucionales</p>
+        {/* Cabecera Principal con Indicador de Rol */}
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-slate-900/40 p-5 rounded-2xl border border-slate-800/80">
+          <div>
+            <div className="flex items-center gap-2.5">
+              <Calendar className="h-6 w-6 text-emerald-400" />
+              <h3 className="text-lg font-bold text-slate-100">Distribución de Guardias (MOD-06)</h3>
+            </div>
+            <p className="text-xs text-slate-400 mt-1">
+              Planificación institucional por áreas y asignación nominal de turnos conforme a las normas <span className="text-emerald-400 font-semibold">RF-0601, RF-0602 y RF-0603</span>.
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <span className="px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+              {esJefeSeguridad && 'Rol: Jefe de Seguridad (Planificación Institucional RF-0601)'}
+              {esResponsable && `Rol: ${user?.role === 'RESPONSABLE_AREA' ? 'Responsable de Área' : 'Responsable de Depto'} (Asignación Nominal RF-0603)`}
+              {esSuperadmin && 'Rol: Superadministrador (Control Global)'}
+            </span>
+          </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <div className="bg-slate-900/50 backdrop-blur-md border border-slate-800/80 rounded-2xl p-6 space-y-4">
-            <h3 className="text-sm font-bold text-slate-100 border-b border-slate-850 pb-2">Planificar Turnos de Guardia</h3>
-            
-            <div className="space-y-3">
+        {/* Selector de Pestañas exclusivo para Superadmin */}
+        {esSuperadmin && (
+          <div className="flex gap-2 border-b border-slate-800 pb-3">
+            <button
+              onClick={() => setSubTabDistribucion('INSTITUCIONAL')}
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+                subTabDistribucion === 'INSTITUCIONAL'
+                  ? 'bg-emerald-600 text-white shadow-md shadow-emerald-950/50'
+                  : 'bg-slate-900/60 text-slate-400 hover:text-slate-200 hover:bg-slate-850 border border-slate-800'
+              }`}
+            >
+              <Database className="h-4 w-4" />
+              1. Cuotas y Días por Área (RF-0601 / RF-0602 - Jefe de Seguridad)
+            </button>
+            <button
+              onClick={() => setSubTabDistribucion('NOMINAL')}
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+                subTabDistribucion === 'NOMINAL'
+                  ? 'bg-emerald-600 text-white shadow-md shadow-emerald-950/50'
+                  : 'bg-slate-900/60 text-slate-400 hover:text-slate-200 hover:bg-slate-850 border border-slate-800'
+              }`}
+            >
+              <Users className="h-4 w-4" />
+              2. Asignación Nominal de Personas (RF-0603 - Responsable de Área)
+            </button>
+          </div>
+        )}
+
+        {/* VISTA 1: PLANIFICACIÓN INSTITUCIONAL POR ÁREAS (JEFE DE SEGURIDAD / SUPERADMIN) */}
+        {(esJefeSeguridad || (esSuperadmin && subTabDistribucion === 'INSTITUCIONAL')) && (
+          <div className="space-y-6">
+            <div className="bg-emerald-950/20 border border-emerald-500/20 rounded-xl p-4 text-xs text-emerald-300 flex items-start gap-3">
+              <Sparkles className="h-5 w-5 text-emerald-400 flex-shrink-0 mt-0.5" />
               <div>
-                <label className="block text-xs font-semibold text-slate-400 mb-1.5">Área / Facultad Responsable</label>
-                <select 
-                  value={formDistribucion.areaId} 
-                  onChange={(e) => setFormDistribucion(prev => ({ ...prev, areaId: Number(e.target.value) }))}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none"
-                >
-                  {nomencladores.areas.map(a => (
-                    <option key={a.id} value={a.id}>
-                      {a.nombre} {!a.tieneEstudiantes ? '(Solo Obreros)' : '(Obreros y Estudiantes)'}
-                    </option>
-                  ))}
-                </select>
-                {esAreaSinEstudiantes && (
-                  <p className="mt-1 text-[11px] text-amber-400 font-semibold flex items-center gap-1">
-                    ⚠️ Regla RN-06: Esta área no gestiona régimen estudiantil.
-                  </p>
-                )}
+                <p className="font-bold">Planificación Macro Institucional (RF-0601, RF-0602)</p>
+                <p className="text-emerald-400/80 mt-0.5">
+                  El Jefe del Dpto. de Seguridad asigna a cada Área/Facultad las sedes físicas, turnos (diurno/nocturno), cuotas de personal requeridas y los días del mes en que deben cubrir la guardia. Posteriormente, los Responsables de Área asignarán nominalmente a las personas específicas de su potencial (RF-0603).
+                </p>
               </div>
+            </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-400 mb-1.5">Régimen de Personal</label>
-                  <select 
-                    value={formDistribucion.tipoPersonal}
-                    onChange={(e) => setFormDistribucion(prev => ({ ...prev, tipoPersonal: e.target.value }))}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none"
-                  >
-                    <option value="OBRERO">Obreros / Trabajadores</option>
-                    <option value="ESTUDIANTE">Estudiantes Universitarios</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-400 mb-1.5">Sede Física</label>
-                  <select 
-                    value={formDistribucion.sedeId}
-                    onChange={(e) => setFormDistribucion(prev => ({ ...prev, sedeId: Number(e.target.value) }))}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none"
-                  >
-                    {nomencladores.sedes.map(s => <option key={s.id} value={s.id}>{s.nombre}</option>)}
-                  </select>
-                </div>
-              </div>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Formulario de Planificación */}
+              <div className="bg-slate-900/50 backdrop-blur-md border border-slate-800/80 rounded-2xl p-6 space-y-4">
+                <h3 className="text-sm font-bold text-slate-100 border-b border-slate-850 pb-2">
+                  Asignar Cuota y Días a un Área Universitaria
+                </h3>
+                
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-400 mb-1.5">Área / Facultad Destinataria *</label>
+                    <select 
+                      value={formDistribucion.areaId} 
+                      onChange={(e) => setFormDistribucion(prev => ({ ...prev, areaId: Number(e.target.value) }))}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-emerald-500"
+                    >
+                      {nomencladores.areas.map(a => (
+                        <option key={a.id} value={a.id}>
+                          {a.nombre} {!a.tieneEstudiantes ? '(Solo Obreros)' : '(Obreros y Estudiantes)'}
+                        </option>
+                      ))}
+                    </select>
+                    {esAreaSinEstudiantes && (
+                      <p className="mt-1 text-[11px] text-amber-400 font-semibold flex items-center gap-1">
+                        ⚠️ Regla RN-06: Esta área no gestiona régimen estudiantil.
+                      </p>
+                    )}
+                  </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-400 mb-1.5">Tipo de Turno</label>
-                  <select 
-                    value={formDistribucion.tipoGuardia}
-                    onChange={(e) => setFormDistribucion(prev => ({ ...prev, tipoGuardia: e.target.value }))}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none"
-                  >
-                    <option value="Diurna">Diurna</option>
-                    <option value="Nocturna">Nocturna</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-400 mb-1.5">Cantidad Requerida / Día</label>
-                  <input 
-                    type="number" 
-                    min={1} 
-                    max={20}
-                    value={formDistribucion.cantidadRequerida} 
-                    onChange={(e) => setFormDistribucion(prev => ({ ...prev, cantidadRequerida: e.target.value }))}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none" 
-                  />
-                  {alertaMinimo && (
-                    <p className="mt-1 text-[11px] text-amber-400 font-semibold">
-                      ⚠️ RN-07: Mínimo institucional para esta sede: {minSede}
-                    </p>
-                  )}
-                </div>
-              </div>
-
-              {/* Calendario interactivo con toggle de días */}
-              <div>
-                <div className="flex justify-between items-center mb-1.5">
-                  <label className="block text-xs font-semibold text-slate-400">Seleccione los días del mes</label>
-                  <span className="text-[11px] text-emerald-400 font-semibold">{formDistribucion.dias.length} días seleccionados</span>
-                </div>
-                <div className="grid grid-cols-7 gap-1.5 bg-slate-950/60 p-3 rounded-xl border border-slate-850">
-                  {Array.from({ length: 31 }, (_, i) => i + 1).map(day => {
-                    const isSelected = formDistribucion.dias.includes(day);
-                    return (
-                      <button 
-                        key={day}
-                        type="button"
-                        onClick={() => handleToggleDiaDistribucion(day)}
-                        className={`aspect-square rounded-lg flex items-center justify-center text-xs font-semibold transition-all ${
-                          isSelected 
-                            ? 'bg-emerald-600 text-white font-bold border border-emerald-400 shadow-md shadow-emerald-950/50' 
-                            : 'bg-slate-900 text-slate-400 border border-slate-800 hover:bg-slate-850 hover:text-slate-200'
-                        }`}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-400 mb-1.5">Régimen de Personal *</label>
+                      <select 
+                        value={formDistribucion.tipoPersonal}
+                        onChange={(e) => setFormDistribucion(prev => ({ ...prev, tipoPersonal: e.target.value }))}
+                        className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-emerald-500"
                       >
-                        {day}
-                      </button>
+                        <option value="OBRERO">Guardia Obrera (Trabajadores)</option>
+                        <option value="ESTUDIANTE">Guardia Estudiantil (Universitarios)</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-400 mb-1.5">Sede Física *</label>
+                      <select 
+                        value={formDistribucion.sedeId}
+                        onChange={(e) => setFormDistribucion(prev => ({ ...prev, sedeId: Number(e.target.value) }))}
+                        className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-emerald-500"
+                      >
+                        {nomencladores.sedes.map(s => <option key={s.id} value={s.id}>{s.nombre}</option>)}
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-400 mb-1.5">Tipo de Turno *</label>
+                      <select 
+                        value={formDistribucion.tipoGuardia}
+                        onChange={(e) => setFormDistribucion(prev => ({ ...prev, tipoGuardia: e.target.value }))}
+                        className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-emerald-500"
+                      >
+                        <option value="Diurna">Diurna (8:00 AM - 5:00 PM)</option>
+                        <option value="Nocturna">Nocturna (5:00 PM - 8:00 AM)</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-400 mb-1.5">Cuota Requerida / Día *</label>
+                      <input 
+                        type="number" 
+                        min={1} 
+                        max={20}
+                        value={formDistribucion.cantidadRequerida} 
+                        onChange={(e) => setFormDistribucion(prev => ({ ...prev, cantidadRequerida: e.target.value }))}
+                        className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-emerald-500 font-semibold" 
+                      />
+                      {alertaMinimo && (
+                        <p className="mt-1 text-[11px] text-amber-400 font-semibold">
+                          ⚠️ RN-07: Mínimo institucional para esta sede: {minSede}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Calendario interactivo con toggle de días */}
+                  <div>
+                    <div className="flex justify-between items-center mb-1.5">
+                      <label className="block text-xs font-semibold text-slate-400">Seleccione los días del mes</label>
+                      <span className="text-[11px] text-emerald-400 font-semibold">{formDistribucion.dias.length} días seleccionados</span>
+                    </div>
+                    <div className="grid grid-cols-7 gap-1.5 bg-slate-950/60 p-3 rounded-xl border border-slate-850">
+                      {Array.from({ length: 31 }, (_, i) => i + 1).map(day => {
+                        const isSelected = formDistribucion.dias.includes(day);
+                        return (
+                          <button 
+                            key={day}
+                            type="button"
+                            onClick={() => handleToggleDiaDistribucion(day)}
+                            className={`aspect-square rounded-lg flex items-center justify-center text-xs font-semibold transition-all ${
+                              isSelected 
+                                ? 'bg-emerald-600 text-white font-bold border border-emerald-400 shadow-md shadow-emerald-950/50' 
+                                : 'bg-slate-900 text-slate-400 border border-slate-800 hover:bg-slate-850 hover:text-slate-200'
+                            }`}
+                          >
+                            {day}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <button 
+                    type="button"
+                    onClick={handleGuardarDistribucion} 
+                    className="w-full py-2.5 bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-teal-700 hover:to-emerald-600 text-white text-xs font-bold rounded-xl shadow-md transition-all flex items-center justify-center gap-2"
+                  >
+                    <Save className="h-4 w-4" />
+                    Guardar y Notificar al Área (RF-0601 / RF-0602)
+                  </button>
+                </div>
+              </div>
+
+              {/* Listado de Distribuciones Institucionales */}
+              <div className="bg-slate-900/50 backdrop-blur-md border border-slate-800/80 rounded-2xl p-6">
+                <h3 className="text-sm font-bold text-slate-100 border-b border-slate-850 pb-2 flex justify-between items-center">
+                  <span>Cuotas Institucionales Activas</span>
+                  <span className="text-xs text-emerald-400 font-normal">{distribuciones.length} planificadas</span>
+                </h3>
+                <div className="space-y-3 mt-4 max-h-[520px] overflow-y-auto pr-1">
+                  {distribuciones.map(d => {
+                    const totalAsignadosDist = asignaciones.filter(a => a.distribucionId === d.id).length;
+                    const totalEsperadosDist = (Array.isArray(d.dias) ? d.dias.length : 1) * (d.cant || 1);
+                    return (
+                      <div key={d.id} className="p-4 rounded-xl bg-slate-950/40 border border-slate-850 space-y-2 hover:border-slate-700 transition-colors">
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <span className="text-xs font-bold text-slate-200 block">{d.area || d.depto}</span>
+                            <span className="text-[11px] text-slate-400">{d.sede} • {d.tipo}</span>
+                          </div>
+                          <div className="flex gap-1.5 items-center">
+                            <span className="px-2 py-0.5 rounded bg-blue-950/80 text-blue-400 border border-blue-800/40 text-[9px] font-bold uppercase">
+                              {d.tipoPersonal || 'OBRERO'}
+                            </span>
+                            <span className="px-2 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-800/40 text-[9px] font-bold uppercase">
+                              {d.tipo}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex justify-between items-center text-xs text-slate-300 font-semibold pt-1 border-t border-slate-850/60">
+                          <span>Días: {Array.isArray(d.dias) ? d.dias.join(', ') : d.dias}</span>
+                          <span className="text-emerald-400 font-bold">Cuota: {d.cant} pers/día</span>
+                        </div>
+
+                        <div className="flex justify-between items-center text-[11px] text-slate-400 pt-1">
+                          <span>Cobertura nominal:</span>
+                          <span className={`font-semibold ${totalAsignadosDist >= totalEsperadosDist ? 'text-emerald-400' : 'text-amber-400'}`}>
+                            {totalAsignadosDist} / {totalEsperadosDist} asignados
+                          </span>
+                        </div>
+                      </div>
                     );
                   })}
                 </div>
               </div>
-
-              <button 
-                type="button"
-                onClick={handleGuardarDistribucion} 
-                className="w-full py-2.5 bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-teal-700 hover:to-emerald-600 text-white text-xs font-bold rounded-xl shadow-md transition-all flex items-center justify-center gap-2"
-              >
-                <Save className="h-4 w-4" />
-                Guardar Distribución (RN-05 / RN-06 / RN-07)
-              </button>
             </div>
           </div>
+        )}
 
-          <div className="bg-slate-900/50 backdrop-blur-md border border-slate-800/80 rounded-2xl p-6">
-            <h3 className="text-sm font-bold text-slate-100 border-b border-slate-850 pb-2 flex justify-between items-center">
-              <span>Distribuciones Registradas</span>
-              <span className="text-xs text-emerald-400 font-normal">{distribuciones.length} planificadas</span>
-            </h3>
-            <div className="space-y-3 mt-4 max-h-[500px] overflow-y-auto pr-1">
-              {distribuciones.map(d => (
-                <div key={d.id} className="p-4 rounded-xl bg-slate-950/40 border border-slate-850 space-y-2 hover:border-slate-700 transition-colors">
-                  <div className="flex justify-between items-center">
-                    <span className="text-xs font-bold text-slate-200">{d.area || d.depto}</span>
-                    <div className="flex gap-1.5 items-center">
-                      <span className="px-2 py-0.5 rounded bg-blue-950/80 text-blue-400 border border-blue-800/40 text-[9px] font-bold uppercase">
-                        {d.tipoPersonal || 'OBRERO'}
-                      </span>
-                      <span className="px-2 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-800/40 text-[9px] font-bold uppercase">
-                        {d.tipo}
-                      </span>
-                    </div>
+        {/* VISTA 2: ASIGNACIÓN NOMINAL DE PERSONAS (RESPONSABLE DE ÁREA / SUPERADMIN - RF-0603) */}
+        {(esResponsable || (esSuperadmin && subTabDistribucion === 'NOMINAL')) && (
+          <div className="space-y-6">
+            <div className="bg-blue-950/20 border border-blue-500/20 rounded-xl p-4 text-xs text-blue-300 flex items-start gap-3">
+              <UserCheck className="h-5 w-5 text-blue-400 flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="font-bold">Asignación Nominal de Personas por el Área (RF-0603)</p>
+                <p className="text-blue-400/80 mt-0.5">
+                  Como Responsable de Área, seleccione a las personas de su <span className="font-bold text-white">Potencial Aprobado (RN-05)</span> para cubrir los días y cuotas asignados por el Jefe de Seguridad. Cada persona seleccionada quedará programada y recibirá sus notificaciones institucionales automáticas (RN-08).
+                </p>
+              </div>
+            </div>
+
+            {/* Selector de Área (para Superadmin) y Selector de Distribución Activa */}
+            <div className="bg-slate-900/50 backdrop-blur-md border border-slate-800/80 rounded-2xl p-5 space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {esSuperadmin && (
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-400 mb-1.5">Filtrar por Área Universitaria</label>
+                    <select
+                      value={filtroAreaNominal}
+                      onChange={(e) => setFiltroAreaNominal(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-emerald-500"
+                    >
+                      <option value="TODAS">-- Todas las Áreas --</option>
+                      {nomencladores.areas.map(a => <option key={a.id} value={a.nombre}>{a.nombre}</option>)}
+                    </select>
                   </div>
-                  <div className="text-[11px] text-slate-500">{d.sede} • Cuota requerida: {d.cant} personas/día</div>
-                  <div className="text-xs text-slate-300 font-semibold">
-                    Días asignados: {Array.isArray(d.dias) ? d.dias.join(', ') : d.dias}
-                  </div>
+                )}
+
+                <div className={esSuperadmin ? '' : 'md:col-span-2'}>
+                  <label className="block text-xs font-semibold text-slate-400 mb-1.5">
+                    Seleccione la Planificación Institucional a Cubrir *
+                  </label>
+                  <select
+                    value={distSeleccionada?.id || ''}
+                    onChange={(e) => setDistribucionSeleccionadaId(Number(e.target.value))}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-emerald-500 font-semibold"
+                  >
+                    {distribucionesArea.length === 0 ? (
+                      <option value="">No hay distribuciones asignadas a esta área</option>
+                    ) : (
+                      distribucionesArea.map(d => (
+                        <option key={d.id} value={d.id}>
+                          {d.area} • {d.sede} ({d.tipo} {d.tipoPersonal}) — Días: {Array.isArray(d.dias) ? d.dias.join(', ') : d.dias} (Cuota: {d.cant}/día)
+                        </option>
+                      ))
+                    )}
+                  </select>
                 </div>
-              ))}
+              </div>
+            </div>
+
+            {/* Tarjeta de Asignación por Día */}
+            {distSeleccionada ? (
+              <div className="space-y-4">
+                <div className="flex justify-between items-center">
+                  <h3 className="text-sm font-bold text-slate-200 flex items-center gap-2">
+                    <Calendar className="h-4 w-4 text-emerald-400" />
+                    Días asignados a cubrir en {distSeleccionada.sede} ({distSeleccionada.tipo}):
+                  </h3>
+                  <span className="text-xs text-slate-400">
+                    Cuota requerida: <span className="text-emerald-400 font-bold">{distSeleccionada.cant} personas por turno</span>
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {(Array.isArray(distSeleccionada.dias) ? distSeleccionada.dias : []).map(dia => {
+                    const fechaStr = `2026-06-${dia.toString().padStart(2, '0')}`;
+                    const asigsDia = asignaciones.filter(a => a.fecha === fechaStr && (a.distribucionId === distSeleccionada.id || a.sede === distSeleccionada.sede));
+                    const cuotaCompleta = asigsDia.length >= distSeleccionada.cant;
+
+                    return (
+                      <div 
+                        key={dia} 
+                        className={`p-5 rounded-2xl border transition-all ${
+                          cuotaCompleta 
+                            ? 'bg-slate-900/40 border-emerald-500/30' 
+                            : 'bg-slate-900/60 border-amber-500/30 shadow-md shadow-amber-950/20'
+                        }`}
+                      >
+                        <div className="flex justify-between items-start pb-3 border-b border-slate-800">
+                          <div>
+                            <span className="text-sm font-bold text-slate-100 flex items-center gap-2">
+                              📅 Día {dia} de Junio 2026
+                            </span>
+                            <span className="text-[11px] text-slate-400">
+                              {distSeleccionada.sede} • Turno {distSeleccionada.tipo}
+                            </span>
+                          </div>
+                          <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                            cuotaCompleta 
+                              ? 'bg-emerald-950 text-emerald-400 border border-emerald-800/40' 
+                              : 'bg-amber-950 text-amber-400 border border-amber-800/40'
+                          }`}>
+                            {asigsDia.length} / {distSeleccionada.cant} asignados
+                          </span>
+                        </div>
+
+                        {/* Personas actualmente asignadas a este día */}
+                        <div className="py-3 space-y-2">
+                          <label className="block text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
+                            Personal Nominal Asignado:
+                          </label>
+                          {asigsDia.length === 0 ? (
+                            <p className="text-xs text-amber-400 italic bg-amber-950/20 p-2.5 rounded-xl border border-amber-850/40">
+                              ⚠️ Aún no se ha asignado personal a este turno. Seleccione un miembro del potencial abajo.
+                            </p>
+                          ) : (
+                            <div className="space-y-1.5">
+                              {asigsDia.map(a => (
+                                <div key={a.id} className="flex justify-between items-center bg-slate-950/70 p-2.5 rounded-xl border border-slate-800">
+                                  <div className="flex items-center gap-2">
+                                    <div className="h-7 w-7 rounded-lg bg-emerald-600/20 text-emerald-400 flex items-center justify-center font-bold text-xs border border-emerald-500/30">
+                                      {a.persona_nombre?.charAt(0) || 'P'}
+                                    </div>
+                                    <div>
+                                      <p className="text-xs font-bold text-slate-200">{a.persona_nombre}</p>
+                                      <p className="text-[10px] text-slate-400">CI: {a.persona_ci || '######-####'} • {a.tipo}</p>
+                                    </div>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleEliminarAsignacionNominal(a.id)}
+                                    className="p-1 rounded-lg hover:bg-red-950/80 text-slate-400 hover:text-red-400 transition-colors"
+                                    title="Desasignar persona"
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Formulario rápido para asignar persona a este día */}
+                        <div className="pt-2 border-t border-slate-800/80 flex gap-2">
+                          <select
+                            value={personaSeleccionadaPorDia[fechaStr] || ''}
+                            onChange={(e) => setPersonaSeleccionadaPorDia(prev => ({ ...prev, [fechaStr]: e.target.value }))}
+                            className="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-emerald-500"
+                          >
+                            <option value="">-- Seleccionar Persona del Potencial --</option>
+                            {personalAreaElegible
+                              .filter(p => !asigsDia.some(a => a.personaId === p.id))
+                              .map(p => (
+                                <option key={p.id} value={p.id}>
+                                  {p.nombre} ({p.cargo || p.tipo})
+                                </option>
+                              ))}
+                          </select>
+                          <button
+                            type="button"
+                            onClick={() => handleCrearAsignacionNominal(
+                              distSeleccionada.id,
+                              fechaStr,
+                              personaSeleccionadaPorDia[fechaStr]
+                            )}
+                            className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1 shadow-sm"
+                          >
+                            <Plus className="h-3.5 w-3.5" />
+                            Asignar
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : (
+              <div className="p-8 text-center bg-slate-900/30 rounded-2xl border border-slate-850">
+                <p className="text-xs text-slate-400">
+                  No hay distribuciones de guardia asignadas para esta área en el período activo.
+                </p>
+              </div>
+            )}
+
+            {/* Tabla resumen de asignaciones nominales registradas */}
+            <div className="bg-slate-900/50 backdrop-blur-md border border-slate-800/80 rounded-2xl p-6">
+              <h3 className="text-sm font-bold text-slate-100 border-b border-slate-850 pb-2 flex justify-between items-center">
+                <span>Registro Nominal Completo de Guardias Asignadas</span>
+                <span className="text-xs text-emerald-400 font-normal">{asignaciones.length} turnos nominados</span>
+              </h3>
+              <div className="overflow-x-auto mt-4">
+                <table className="w-full text-left text-xs text-slate-300">
+                  <thead className="text-[11px] font-bold text-slate-400 uppercase bg-slate-950/60 border-b border-slate-800">
+                    <tr>
+                      <th className="p-3">Fecha</th>
+                      <th className="p-3">Persona Asignada</th>
+                      <th className="p-3">Carné (RN-10)</th>
+                      <th className="p-3">Sede</th>
+                      <th className="p-3">Turno</th>
+                      <th className="p-3">Estado Control</th>
+                      <th className="p-3 text-center">Acción</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-850">
+                    {asignaciones.map(a => (
+                      <tr key={a.id} className="hover:bg-slate-900/40">
+                        <td className="p-3 font-semibold text-slate-200">{a.fecha}</td>
+                        <td className="p-3 font-bold text-slate-100">{a.persona_nombre || 'Personal UHO'}</td>
+                        <td className="p-3 font-mono text-slate-400">{a.persona_ci || '######-####'}</td>
+                        <td className="p-3">{a.sede}</td>
+                        <td className="p-3">{a.tipoGuardia}</td>
+                        <td className="p-3">
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                            a.estado === 'PRESENTE' ? 'bg-emerald-950 text-emerald-400' :
+                            a.estado === 'AUSENTE' ? 'bg-red-950 text-red-400' :
+                            a.estado === 'JUSTIFICADO' ? 'bg-amber-950 text-amber-400' : 'bg-slate-800 text-slate-400'
+                          }`}>
+                            {a.estado}
+                          </span>
+                        </td>
+                        <td className="p-3 text-center">
+                          <button
+                            type="button"
+                            onClick={() => handleEliminarAsignacionNominal(a.id)}
+                            className="text-slate-400 hover:text-red-400 transition-colors"
+                            title="Eliminar asignación"
+                          >
+                            <Trash2 className="h-4 w-4 mx-auto" />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
-        </div>
+        )}
       </div>
     );
   };

@@ -8,10 +8,11 @@ from core.rbac import (
     HasRole, ROLE_SUPERADMIN, ROLE_JEFE_SEGURIDAD, ROLE_RESPONSABLE_AREA,
     ROLE_RESPONSABLE_DEPARTAMENTO, ROLE_TRABAJADOR, ROLE_ESTUDIANTE
 )
-from .models import Cargo, Contrato, Sede, Area, Departamento, Perfil
+from .models import Cargo, Contrato, Sede, Area, Departamento, Perfil, ConfiguracionReglaGuardia
 from .serializers import (
     CargoSerializer, ContratoSerializer, SedeSerializer,
-    AreaSerializer, DepartamentoSerializer, PerfilSerializer
+    AreaSerializer, DepartamentoSerializer, PerfilSerializer,
+    ConfiguracionReglaGuardiaSerializer
 )
 
 User = get_user_model()
@@ -373,14 +374,50 @@ class SincronizarRegistrosView(APIView):
         except User.DoesNotExist:
             pass
 
+        # 7. Reglas Globales de Guardia RN-02
+        defaults_rn02 = [
+            {'tipo_usuario': 'OBRERO', 'sexo': 'M', 'tipo_turno_defecto': 'Nocturna', 'tipo_dia_defecto': 'Semana'},
+            {'tipo_usuario': 'OBRERO', 'sexo': 'F', 'tipo_turno_defecto': 'Diurna', 'tipo_dia_defecto': 'Semana'},
+            {'tipo_usuario': 'ESTUDIANTE', 'sexo': 'M', 'tipo_turno_defecto': 'Nocturna', 'tipo_dia_defecto': 'Fin de Semana'},
+            {'tipo_usuario': 'ESTUDIANTE', 'sexo': 'F', 'tipo_turno_defecto': 'Diurna', 'tipo_dia_defecto': 'Semana'},
+        ]
+        reglas_creadas = 0
+        for r in defaults_rn02:
+            _, created_regla = ConfiguracionReglaGuardia.objects.get_or_create(
+                tipo_usuario=r['tipo_usuario'],
+                sexo=r['sexo'],
+                defaults={'tipo_turno_defecto': r['tipo_turno_defecto'], 'tipo_dia_defecto': r['tipo_dia_defecto']}
+            )
+            if created_regla:
+                reglas_creadas += 1
+
         return Response({
             "status": "success",
-            "message": "Sincronización simulada completada exitosamente desde ASSET y SIGENU.",
+            "message": "Sincronización institucional completada exitosamente desde ASSET y SIGENU.",
             "cargos_creados": len(cargos_nombres),
             "contratos_creados": len(contratos_nombres),
             "sedes_creadas": len(sedes_data),
             "areas_creadas": len(areas_data),
             "departamentos_creados": len(deptos_data),
             "usuarios_creados": creados,
-            "usuarios_actualizados": actualizados
+            "usuarios_actualizados": actualizados,
+            "reglas_rn02_creadas": reglas_creadas
         }, status=status.HTTP_200_OK)
+
+
+class ConfiguracionReglaGuardiaViewSet(viewsets.ModelViewSet):
+    """
+    CRUD para los parámetros globales del sistema configurables por Superadmin (RN-02).
+    Define los valores por defecto del tipo de guardia y tipo de día según:
+    - tipo de usuario (OBRERO / ESTUDIANTE)
+    - sexo (M / F)
+    """
+    queryset = ConfiguracionReglaGuardia.objects.all()
+    serializer_class = ConfiguracionReglaGuardiaSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_permissions(self):
+        if self.action in ['create', 'update', 'partial_update', 'destroy']:
+            return [HasRole.for_roles(ROLE_SUPERADMIN)()]
+        return [IsAuthenticated()]
+
