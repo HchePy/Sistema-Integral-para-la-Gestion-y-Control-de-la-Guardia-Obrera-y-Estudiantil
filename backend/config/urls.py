@@ -1,19 +1,20 @@
 from django.contrib import admin
 from django.urls import path, include
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
+from modules.reportes.views import PublicGuardiasDelDiaAPIView, PublicEstadisticasCumplimientoAPIView
 
 urlpatterns = [
     # Panel de Administración de Django
     path('admin/', admin.site.urls),
     
-    # Documentación de API (Swagger / OpenAPI 3.0)
+    # Documentación de API (Swagger / OpenAPI 3.0 — MOD-10, RF-1003)
     path('api/schema/', SpectacularAPIView.as_view(), name='schema'),
     path('api/docs/', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui'),
     
-    # Módulo de Autenticación
+    # Módulo de Autenticación Institucional (AGA_AUTH — RF-0109)
     path('api/auth/', include('authentication.urls')),
     
-    # Skeletons de Módulos de Guardia (Modularidad Escalable)
+    # Módulos del SIGCGOE (MOD-01 a MOD-09)
     path('api/guardia_admin/', include('modules.guardia_admin.urls')),
     path('api/guardia-admin/', include('modules.guardia_admin.urls')),
     path('api/compromiso/', include('modules.compromiso.urls')),
@@ -21,4 +22,8 @@ urlpatterns = [
     path('api/distribucion/', include('modules.distribucion.urls')),
     path('api/control/', include('modules.control.urls')),
     path('api/reportes/', include('modules.reportes.urls')),
+
+    # MOD-10: Endpoints de Interoperabilidad Institucional (RF-1001, RF-1002)
+    path('api/public/guardias-del-dia/', PublicGuardiasDelDiaAPIView.as_view(), name='api-public-guardias-dia'),
+    path('api/public/estadisticas-cumplimiento/', PublicEstadisticasCumplimientoAPIView.as_view(), name='api-public-estadisticas'),
 ]

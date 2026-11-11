@@ -1,8 +1,32 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
+from core.models import AuditLog
 from .models import Cargo, Contrato, Sede, Area, Departamento, Perfil, ConfiguracionReglaGuardia
 
 User = get_user_model()
+
+class AuditLogSerializer(serializers.ModelSerializer):
+    usuario_username = serializers.SerializerMethodField()
+    usuario_nombre = serializers.SerializerMethodField()
+    usuario_rol = serializers.SerializerMethodField()
+
+    class Meta:
+        model = AuditLog
+        fields = [
+            'id', 'usuario', 'usuario_username', 'usuario_nombre', 'usuario_rol',
+            'accion', 'modelo', 'objeto_id', 'detalle', 'ip_address', 'fecha'
+        ]
+
+    def get_usuario_username(self, obj):
+        return obj.usuario.username if obj.usuario else 'sistema'
+
+    def get_usuario_nombre(self, obj):
+        if obj.usuario:
+            return obj.usuario.get_full_name() or obj.usuario.username
+        return 'Sistema Automático UHO'
+
+    def get_usuario_rol(self, obj):
+        return getattr(obj.usuario, 'role', 'SISTEMA') if obj.usuario else 'SISTEMA'
 
 class CustomUserMiniSerializer(serializers.ModelSerializer):
     class Meta:
@@ -48,10 +72,14 @@ class AreaSerializer(serializers.ModelSerializer):
 class DepartamentoSerializer(serializers.ModelSerializer):
     areaPadre_nombre = serializers.ReadOnlyField(source='areaPadre.nombre')
     responsable_info = serializers.SerializerMethodField()
+    trabajadoresCount = serializers.SerializerMethodField()
 
     class Meta:
         model = Departamento
         fields = '__all__'
+
+    def get_trabajadoresCount(self, obj):
+        return obj.integrantes.filter(activo=True).count()
 
     def get_responsable_info(self, obj):
         if obj.responsable:

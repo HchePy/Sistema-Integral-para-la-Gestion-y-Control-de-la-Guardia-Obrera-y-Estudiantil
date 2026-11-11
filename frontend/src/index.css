@@ -2,61 +2,52 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  --uho-azul: #1A3A6E;
+  --uho-azul-med: #2E6DAD;
+  --uho-azul-claro: #4A90D9;
+  --uho-celeste: #D5E8F0;
+  --uho-verde: #27AE60;
+  --uho-verde-logo: #8CC63F;
+  --uho-amarillo: #F39C12;
+  --uho-rojo: #E74C3C;
+  --uho-gris-fondo: #F4F6F9;
+}
+
 @layer base {
   body {
-    @apply bg-slate-950 text-slate-100;
-    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+    @apply bg-[#F4F6F9] text-gray-900 antialiased selection:bg-[#1A3A6E] selection:text-white;
   }
 }
 
-/* Efectos de Glassmorphism Premium */
-.glass {
-  background: rgba(15, 23, 42, 0.45);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+/* Efectos de Cristal y Sombras Institucionales UHO */
+.glass-panel {
+  @apply bg-white/90 backdrop-blur-md border border-[#D5E8F0]/70 shadow-xl;
 }
 
 .glass-card {
-  background: rgba(30, 41, 59, 0.45);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(255, 255, 255, 0.07);
-  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  @apply bg-white/95 backdrop-blur-sm border border-gray-200/80 shadow-md transition-all duration-300 hover:shadow-lg hover:border-[#4A90D9]/50;
 }
 
 .glass-card:hover {
-  border-color: rgba(255, 179, 0, 0.25); /* Oro UHO */
-  box-shadow: 0 12px 40px 0 rgba(27, 94, 32, 0.2);  /* Brillo Verde UHO */
-  transform: translateY(-3px);
+  box-shadow: 0 10px 30px -10px rgba(26, 58, 110, 0.18); /* Brillo Azul Institucional UHO */
 }
 
-/* Animaciones personalizadas */
-@keyframes pulseGlow {
-  0%, 100% {
-    opacity: 0.5;
-  }
-  50% {
-    opacity: 0.8;
-  }
+/* Scrollbar institucional estilizada */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
 }
 
-.pulse-glow {
-  animation: pulseGlow 3s infinite;
+::-webkit-scrollbar-track {
+  background: #f1f5f9;
 }
 
-/* Transiciones responsivas del menú lateral móvil */
-@keyframes slideRight {
-  from {
-    transform: translateX(-100%);
-  }
-  to {
-    transform: translateX(0);
-  }
+::-webkit-scrollbar-thumb {
+  background: #94a3b8;
+  border-radius: 9999px;
 }
 
-.animate-slideRight {
-  animation: slideRight 0.25s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+::-webkit-scrollbar-thumb:hover {
+  background: #1A3A6E;
 }
-

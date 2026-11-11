@@ -24,6 +24,7 @@ class Contrato(AuditableModel):
     Representa el tipo de relación laboral o estudiantil (ej. Fijo Indeterminado, Adiestrado, Estudiante).
     """
     nombre = models.CharField(max_length=150, unique=True, verbose_name="Tipo de Contrato")
+    descripcion = models.CharField(max_length=255, blank=True, null=True, verbose_name="Descripción")
     activo = models.BooleanField(default=True, verbose_name="Activo")
 
     class Meta:
@@ -105,6 +106,10 @@ class Departamento(AuditableModel):
         ordering = ["nombre"]
         unique_together = ["areaPadre", "nombre"]
 
+    @property
+    def integrantes(self):
+        return self.perfiles
+
     def __str__(self):
         return f"{self.areaPadre.nombre} - {self.nombre}"
 
@@ -168,6 +173,7 @@ class Perfil(AuditableModel):
     )
     tipoPref = models.CharField(max_length=20, choices=TURNO_CHOICES, default='Diurna', verbose_name="Turno Preferido")
     diaPref = models.CharField(max_length=20, choices=DIA_CHOICES, default='Semana', verbose_name="Día de la semana Preferido")
+    activo = models.BooleanField(default=True, verbose_name="Activo")
 
     class Meta:
         verbose_name = "Perfil de Personal / Estudiante"

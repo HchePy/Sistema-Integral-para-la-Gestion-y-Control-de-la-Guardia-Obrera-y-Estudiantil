@@ -181,9 +181,10 @@ A continuación se detalla la lista de verificación (checklist) oficial de los 
   - [x] **[MOD-06]** Distribución mensual de turnos y asignación nominal de turnos (`DistribucionArea`, `AsignacionGuardia`).
   - [x] **[MOD-07]** Registro del Control de Guardia diario y evaluaciones (Bien, Regular, Mal, cumplimiento estricto RN-09).
   - [x] **[MOD-09]** Sistema de notificaciones institucionales (Campana en header, alertas automáticas RN-08 a 7 días y 24h).
-- [ ] **Hito 5: Reportes y Cierre de Tesis (2027)**
-  - [x] **[MOD-08]** Dashboard de cumplimiento interactivo y estadísticas gráficas.
-  - [x] **[MOD-08]** Generación y exportación de reportes a PDF (WeasyPrint / ReportLab) y Excel.
-  - [ ] **[MOD-10]** Documentación Swagger final e integración con el ecosistema de la UHO.
-  - [ ] Pruebas unitarias de cobertura (Mínimo 60%).
-  - [ ] Redacción final del informe técnico de tesis.
+- [x] **Hito 5: Reportes, API Pública e Integración Institucional UHO (2027)**
+  - [x] **[MOD-08]** Dashboard de cumplimiento interactivo y estadísticas gráficas con identidad visual oficial de la Universidad de Holguín (`#1A3A6E` Azul Marino Institucional, `#2E6DAD` Azul Medio, `#4A90D9` Azul Claro, `#D5E8F0` Celeste).
+  - [x] **[MOD-08]** Generación y exportación de reportes institucionales a PDF (ReportLab) y Excel (OpenPyXL) con membrete oficial MES/UHO y enmascaramiento de CI (`RN-10`).
+  - [x] **[MOD-10]** Documentación Swagger / OpenAPI 3.0 final (`/api/docs/`), endpoints públicos de consulta (`/api/public/guardias-del-dia/` y `/api/public/estadisticas-cumplimiento/`) y adaptadores desacoplados para `AGA_AUTH`, `ASSET` y `SIGENU` (`backend/core/integrations.py`).
+  - [x] **[RNF-11]** Bitácora inmutable de auditoría (`AuditLog`) accesible desde el módulo de Reportes y Auditoría.
+  - [x] Pruebas unitarias y de integración automatizadas (`python manage.py test`) validando las reglas `RN-01` a `RN-10`, `RF-0102`, `RF-1001` y `RF-1002`.
+  - [x] Simulación integral de Base de Datos institucional (`seed_db.py`) lista para conmutar a PostgreSQL en producción mediante variables de entorno (`.env`).

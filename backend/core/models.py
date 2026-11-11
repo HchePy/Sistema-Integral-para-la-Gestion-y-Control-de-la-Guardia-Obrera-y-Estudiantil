@@ -62,6 +62,21 @@ class AuditLog(models.Model):
         verbose_name_plural = 'Registros de Auditoría'
         ordering = ['-fecha_registro']
 
+    def __init__(self, *args, **kwargs):
+        if 'modelo' in kwargs and 'tabla' not in kwargs:
+            kwargs['tabla'] = kwargs.pop('modelo')
+        elif 'modelo' in kwargs:
+            kwargs.pop('modelo')
+        super().__init__(*args, **kwargs)
+
+    @property
+    def modelo(self):
+        return self.tabla
+
+    @property
+    def fecha(self):
+        return self.fecha_registro
+
     def __str__(self):
         return f"{self.fecha_registro} - {self.usuario} - {self.accion} en {self.tabla}"
 

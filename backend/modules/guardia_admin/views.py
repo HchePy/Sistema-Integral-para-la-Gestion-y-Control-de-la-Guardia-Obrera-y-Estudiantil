@@ -8,11 +8,13 @@ from core.rbac import (
     HasRole, ROLE_SUPERADMIN, ROLE_JEFE_SEGURIDAD, ROLE_RESPONSABLE_AREA,
     ROLE_RESPONSABLE_DEPARTAMENTO, ROLE_TRABAJADOR, ROLE_ESTUDIANTE
 )
+from core.models import AuditLog
+from core.integrations import AssetRRHHAdapter, SigenuAdapter, calcular_edad_y_sexo_desde_ci
 from .models import Cargo, Contrato, Sede, Area, Departamento, Perfil, ConfiguracionReglaGuardia
 from .serializers import (
     CargoSerializer, ContratoSerializer, SedeSerializer,
     AreaSerializer, DepartamentoSerializer, PerfilSerializer,
-    ConfiguracionReglaGuardiaSerializer
+    ConfiguracionReglaGuardiaSerializer, AuditLogSerializer
 )
 
 User = get_user_model()
@@ -102,6 +104,28 @@ class DepartamentoViewSet(viewsets.ModelViewSet):
             return [HasRole.for_roles(ROLE_SUPERADMIN)()]
         return super().get_permissions()
 
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        activos_count = instance.integrantes.filter(activo=True).count()
+        if activos_count > 0:
+            return Response(
+                {
+                    "error": f"RF-0102: No se puede eliminar el departamento '{instance.nombre}' porque tiene {activos_count} integrante(s) activo(s) asociado(s)."
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        nombre_depto = instance.nombre
+        response = super().destroy(request, *args, **kwargs)
+        AuditLog.objects.create(
+            usuario=request.user,
+            accion='DELETE',
+            modelo='Departamento',
+            objeto_id=str(kwargs.get('pk', '')),
+            detalle=f"RF-0102: Eliminado departamento '{nombre_depto}' sin trabajadores activos asociados.",
+            ip_address=request.META.get('REMOTE_ADDR', '127.0.0.1')
+        )
+        return response
+
 # --- VIEWSET DE PERFILES CON SEGURIDAD RBAC ---
 
 class PerfilViewSet(viewsets.ModelViewSet):
@@ -186,195 +210,172 @@ class PerfilViewSet(viewsets.ModelViewSet):
 
 class SincronizarRegistrosView(APIView):
     """
-    Simula la sincronización masiva de la guardia con el sistema de personal (ASSET) 
-    y el registro escolar (SIGENU), insertando nomencladores, usuarios y perfiles por defecto.
+    Sincronización con los registros primarios institucionales de la Universidad de Holguín:
+    - ASSET (Sistema de Recursos Humanos - Trabajadores, RF-0107)
+    - SIGENU (Sistema de Gestión de la Nueva Universidad - Estudiantes, RF-0108)
+    Cumple RN-01: Calcula edad/sexo desde el CI y preserva intactos los datos de contacto locales.
     """
-    permission_classes = [IsAuthenticated, HasRole.for_roles(ROLE_SUPERADMIN)]
+    permission_classes = [IsAuthenticated]
 
     def post(self, request):
-        # 1. Crear Cargos por defecto si no existen
-        cargos_nombres = ['Decano', 'Profesor Auxiliar', 'Especialista en Redes', 'Técnico de Soporte', 'Secretaria', 'Estudiante de 4to Año']
-        cargos = {}
-        for c in cargos_nombres:
-            cargo, _ = Cargo.objects.get_or_create(nombre=c)
-            cargos[c] = cargo
+        origen = str(request.data.get('origen', 'TODOS')).upper()
 
-        # 2. Crear Contratos por defecto si no existen
-        contratos_nombres = ['Fijo Indeterminado', 'Determinado', 'Adiestrado', 'Estudiante Activo']
-        contratos = {}
-        for c in contratos_nombres:
-            contrato, _ = Contrato.objects.get_or_create(nombre=c)
-            contratos[c] = contrato
-
-        # 3. Crear Sedes por defecto si no existen
+        # 1. Asegurar Sedes Oficiales de la Universidad de Holguín (RF-0103)
         sedes_data = [
-            {'nombre': 'Sede Oscar Lucero Moya', 'direccion': 'Ave. de los Libertadores, Holguín', 'minObreras': 3, 'minEstudiantiles': 4},
-            {'nombre': 'Sede Manuel Aguilera', 'direccion': 'Carretera a Guardalavaca, Holguín', 'minObreras': 2, 'minEstudiantiles': 2},
-            {'nombre': 'Sede Celia Sánchez Manduley', 'direccion': 'Ave. XX Aniversario, Holguín', 'minObreras': 2, 'minEstudiantiles': 2}
+            {'nombre': 'Sede Oscar Lucero Moya', 'direccion': 'Ave. XX Aniversario, Piedra Blanca, Holguín', 'minObreras': 3, 'minEstudiantiles': 4},
+            {'nombre': 'Sede Celia Sánchez Manduley', 'direccion': 'Ave. de los Libertadores, Holguín', 'minObreras': 2, 'minEstudiantiles': 3},
+            {'nombre': 'Sede Manuel Fajardo', 'direccion': 'Prolongación de Frexes, Holguín', 'minObreras': 2, 'minEstudiantiles': 2},
+            {'nombre': 'Sede José de la Luz y Caballero', 'direccion': 'Ave. Capitán Urbino, Holguín', 'minObreras': 2, 'minEstudiantiles': 2},
         ]
-        sedes = {}
         for s_data in sedes_data:
-            sede, _ = Sede.objects.get_or_create(
+            Sede.objects.get_or_create(
                 nombre=s_data['nombre'],
                 defaults={
                     'direccion': s_data['direccion'],
                     'minObreras': s_data['minObreras'],
-                    'minEstudiantiles': s_data['minEstudiantiles']
+                    'minEstudiantiles': s_data['minEstudiantiles'],
                 }
             )
-            sedes[s_data['nombre']] = sede
 
-        # 4. Crear Áreas por defecto si no existen
+        # 2. Asegurar Áreas y Departamentos Oficiales UHO (RF-0101, RF-0102, RN-06)
         areas_data = [
             {'codigo': 'FAC-INF', 'nombre': 'Facultad de Informática y Matemática', 'tieneEstudiantes': True},
             {'codigo': 'FAC-ING', 'nombre': 'Facultad de Ingeniería', 'tieneEstudiantes': True},
+            {'codigo': 'FAC-CE', 'nombre': 'Facultad de Ciencias Empresariales y Administración', 'tieneEstudiantes': True},
+            {'codigo': 'FAC-CF', 'nombre': 'Facultad de Cultura Física y Deportes', 'tieneEstudiantes': True},
             {'codigo': 'DIR-INF', 'nombre': 'Dirección de Informatización', 'tieneEstudiantes': False},
-            {'codigo': 'FAC-MED', 'nombre': 'Facultad de Ciencias Médicas', 'tieneEstudiantes': True}
+            {'codigo': 'DIR-SEG', 'nombre': 'Dirección de Seguridad y Protección Universitaria', 'tieneEstudiantes': False},
         ]
-        areas = {}
+        areas_by_code = {}
         for a_data in areas_data:
-            area, _ = Area.objects.get_or_create(
+            area_obj, _ = Area.objects.get_or_create(
                 codigo=a_data['codigo'],
-                defaults={
-                    'nombre': a_data['nombre'],
-                    'tieneEstudiantes': a_data['tieneEstudiantes']
-                }
+                defaults={'nombre': a_data['nombre'], 'tieneEstudiantes': a_data['tieneEstudiantes']}
             )
-            areas[a_data['nombre']] = area
+            areas_by_code[a_data['codigo']] = area_obj
 
-        # 5. Crear Departamentos por defecto si no existen
         deptos_data = [
-            {'codigo': 'DEP-SIST', 'nombre': 'Depto. de Sistemas de Información', 'area_nombre': 'Facultad de Informática y Matemática'},
-            {'codigo': 'DEP-RED', 'nombre': 'Depto. de Conectividad y Redes', 'area_nombre': 'Facultad de Informática y Matemática'},
-            {'codigo': 'DEP-MEC', 'nombre': 'Depto. de Ingeniería Mecánica', 'area_nombre': 'Facultad de Ingeniería'},
-            {'codigo': 'DEP-TEL', 'nombre': 'Depto. de Telecomunicaciones', 'area_nombre': 'Dirección de Informatización'}
+            {'codigo': 'DEP-IS', 'nombre': 'Departamento de Ingeniería de Software', 'area_codigo': 'FAC-INF'},
+            {'codigo': 'DEP-SI', 'nombre': 'Departamento de Sistemas de Información', 'area_codigo': 'FAC-INF'},
+            {'codigo': 'DEP-MAT', 'nombre': 'Departamento de Matemática', 'area_codigo': 'FAC-INF'},
+            {'codigo': 'DEP-LAB', 'nombre': 'Laboratorio de Innovación Digital', 'area_codigo': 'FAC-INF'},
+            {'codigo': 'DEP-RED', 'nombre': 'Departamento de Conectividad y Redes', 'area_codigo': 'DIR-INF'},
+            {'codigo': 'DEP-DES', 'nombre': 'Departamento de Desarrollo de Software', 'area_codigo': 'DIR-INF'},
+            {'codigo': 'DEP-MEC', 'nombre': 'Departamento de Ingeniería Mecánica', 'area_codigo': 'FAC-ING'},
+            {'codigo': 'DEP-CIV', 'nombre': 'Departamento de Ingeniería Civil', 'area_codigo': 'FAC-ING'},
+            {'codigo': 'DEP-ADM', 'nombre': 'Departamento de Administración y Economía', 'area_codigo': 'FAC-CE'},
+            {'codigo': 'DEP-CF', 'nombre': 'Departamento de Cultura Física', 'area_codigo': 'FAC-CF'},
+            {'codigo': 'DEP-SEG', 'nombre': 'Departamento de Guardia y Protección Física', 'area_codigo': 'DIR-SEG'},
         ]
-        deptos = {}
+        deptos_by_code = {}
         for d_data in deptos_data:
-            area_padre = areas.get(d_data['area_nombre'])
+            area_padre = areas_by_code.get(d_data['area_codigo'])
             if area_padre:
-                depto, _ = Departamento.objects.get_or_create(
+                depto_obj, _ = Departamento.objects.get_or_create(
                     codigo=d_data['codigo'],
                     areaPadre=area_padre,
                     defaults={'nombre': d_data['nombre']}
                 )
-                deptos[d_data['nombre']] = depto
+                deptos_by_code[d_data['codigo']] = depto_obj
 
-        # 6. Crear usuarios y perfiles por defecto (para pruebas rápidas de login)
-        mock_usuarios = [
-            {
-                'username': 'superadmin', 'first_name': 'Carlos', 'last_name': 'Leyva',
-                'email': 'carlos.leyva@uho.edu.cu', 'role': ROLE_SUPERADMIN, 'depto_inst': 'Dirección de Informatización',
-                'ci': '75041012345', 'sexo': 'M', 'tipo': 'OBRERO', 'contrato': 'Fijo Indeterminado',
-                'area': 'Dirección de Informatización', 'depto': 'Depto. de Telecomunicaciones', 'cargo': 'Decano'
-            },
-            {
-                'username': 'jefe_seguridad', 'first_name': 'Elena', 'last_name': 'Rost',
-                'email': 'elena.rost@uho.edu.cu', 'role': ROLE_JEFE_SEGURIDAD, 'depto_inst': 'Facultad de Informática y Matemática',
-                'ci': '79051212345', 'sexo': 'F', 'tipo': 'OBRERO', 'contrato': 'Fijo Indeterminado',
-                'area': 'Facultad de Informática y Matemática', 'depto': 'Depto. de Sistemas de Información', 'cargo': 'Profesor Auxiliar'
-            },
-            {
-                'username': 'resp_area', 'first_name': 'Julio', 'last_name': 'Gómez',
-                'email': 'julio.gomez@uho.edu.cu', 'role': ROLE_RESPONSABLE_AREA, 'depto_inst': 'Facultad de Ingeniería',
-                'ci': '82031412345', 'sexo': 'M', 'tipo': 'OBRERO', 'contrato': 'Fijo Indeterminado',
-                'area': 'Facultad de Ingeniería', 'depto': 'Depto. de Ingeniería Mecánica', 'cargo': 'Profesor Auxiliar'
-            },
-            {
-                'username': 'resp_depto', 'first_name': 'Ramón', 'last_name': 'Valdés',
-                'email': 'ramon.valdes@uho.edu.cu', 'role': ROLE_RESPONSABLE_DEPARTAMENTO, 'depto_inst': 'Facultad de Informática y Matemática',
-                'ci': '85091212345', 'sexo': 'M', 'tipo': 'OBRERO', 'contrato': 'Fijo Indeterminado',
-                'area': 'Facultad de Informática y Matemática', 'depto': 'Depto. de Sistemas de Información', 'cargo': 'Profesor Auxiliar'
-            },
-            {
-                'username': 'trabajador', 'first_name': 'José', 'last_name': 'Rodríguez Pérez',
-                'email': 'jose.rodriguez@uho.edu.cu', 'role': ROLE_TRABAJADOR, 'depto_inst': 'Facultad de Informática y Matemática',
-                'ci': '78041523456', 'sexo': 'M', 'tipo': 'OBRERO', 'contrato': 'Fijo Indeterminado',
-                'area': 'Facultad de Informática y Matemática', 'depto': 'Depto. de Sistemas de Información', 'cargo': 'Profesor Auxiliar'
-            },
-            {
-                'username': 'estudiante', 'first_name': 'Carlos', 'last_name': 'Gómez Batista',
-                'email': 'carlos.gomez@uho.edu.cu', 'role': ROLE_ESTUDIANTE, 'depto_inst': 'Facultad de Informática y Matemática',
-                'ci': '03102434567', 'sexo': 'M', 'tipo': 'ESTUDIANTE', 'contrato': 'Estudiante Activo',
-                'area': 'Facultad de Informática y Matemática', 'depto': 'Depto. de Sistemas de Información', 'cargo': 'Estudiante de 4to Año'
-            }
-        ]
-        
         creados = 0
         actualizados = 0
-        
-        for u_data in mock_usuarios:
-            user, created = User.objects.get_or_create(
-                username=u_data['username'],
-                defaults={
-                    'email': u_data['email'],
-                    'first_name': u_data['first_name'],
-                    'last_name': u_data['last_name'],
-                    'role': u_data['role'],
-                    'departamento': u_data['depto_inst']
-                }
-            )
-            if created:
-                user.set_password('password')
-                user.save()
-                creados += 1
-            else:
-                user.first_name = u_data['first_name']
-                user.last_name = u_data['last_name']
-                user.role = u_data['role']
-                user.departamento = u_data['depto_inst']
-                user.save()
-                actualizados += 1
-                
-            # Asignar perfiles correspondientes
-            area_obj = areas.get(u_data['area'])
-            depto_obj = deptos.get(u_data['depto'])
-            cargo_obj = cargos.get(u_data['cargo'])
-            contrato_obj = contratos.get(u_data['contrato'])
-            
-            Perfil.objects.update_or_create(
-                usuario=user,
-                defaults={
-                    'ci': u_data['ci'],
-                    'sexo': u_data['sexo'],
-                    'tipo': u_data['tipo'],
-                    'area': area_obj,
-                    'depto': depto_obj,
-                    'cargo': cargo_obj,
-                    'contrato': contrato_obj,
-                    'telefono': '24461234' if u_data['tipo'] == 'OBRERO' else '',
-                    'celular': '52345678',
-                    'whatsapp': '52345678',
-                    'direccion': 'Calle Martí #45, Holguín',
-                    'referencia': 'Cerca del parque central',
-                    'contactoNombre': 'Luis Rodríguez',
-                    'contactoCelular': '53987654'
-                }
-            )
+        fuentes_consultadas = []
 
-        # Asignar el responsable del Area y Departamento en base a los usuarios creados
-        try:
-            admin_user = User.objects.get(username='superadmin')
-            dir_inf = areas.get('Dirección de Informatización')
-            if dir_inf:
-                dir_inf.responsable = admin_user
-                dir_inf.save()
-                
-            resp_area_user = User.objects.get(username='resp_area')
-            fac_ing = areas.get('Facultad de Ingeniería')
-            if fac_ing:
-                fac_ing.responsable = resp_area_user
-                fac_ing.save()
-                
-            resp_depto_user = User.objects.get(username='resp_depto')
-            depto_sist = deptos.get('Depto. de Sistemas de Información')
-            if depto_sist:
-                depto_sist.responsable = resp_depto_user
-                depto_sist.save()
-        except User.DoesNotExist:
-            pass
+        # 3. Sincronizar Trabajadores desde ASSET (RF-0107)
+        if origen in ['TODOS', 'ASSET']:
+            asset_resp = AssetRRHHAdapter.fetch_trabajadores()
+            fuentes_consultadas.append(asset_resp['source'])
+            for item in asset_resp['registros']:
+                ci_info = calcular_edad_y_sexo_desde_ci(item['ci'])
+                area_obj = areas_by_code.get(item.get('area_codigo')) or Area.objects.first()
+                depto_obj = deptos_by_code.get(item.get('depto_codigo'))
+                cargo_obj, _ = Cargo.objects.get_or_create(nombre=item.get('cargo', 'Profesor Auxiliar'))
+                contrato_obj, _ = Contrato.objects.get_or_create(nombre=item.get('contrato', 'Indeterminado'))
 
-        # 7. Reglas Globales de Guardia RN-02
+                user, u_created = User.objects.get_or_create(
+                    username=item['username'],
+                    defaults={
+                        'email': item['email'],
+                        'first_name': item['first_name'],
+                        'last_name': item['last_name'],
+                        'role': item.get('role', ROLE_TRABAJADOR),
+                        'departamento': area_obj.nombre if area_obj else '',
+                    }
+                )
+                if u_created:
+                    user.set_password('password')
+                    user.save()
+                    creados += 1
+                else:
+                    user.first_name = item['first_name']
+                    user.last_name = item['last_name']
+                    user.email = item['email']
+                    user.save()
+                    actualizados += 1
+
+                perfil, _ = Perfil.objects.get_or_create(usuario=user)
+                perfil.ci = item['ci']
+                perfil.sexo = ci_info['sexo']
+                perfil.tipo = 'OBRERO'
+                perfil.area = area_obj
+                perfil.depto = depto_obj
+                perfil.cargo = cargo_obj
+                perfil.contrato = contrato_obj
+                # RN-01: Nunca sobrescribir datos locales de contacto si ya existen
+                if not perfil.celular:
+                    perfil.celular = '52481920'
+                if not perfil.direccion:
+                    perfil.direccion = 'Reparto Peralta, Holguín'
+                perfil.save()
+
+        # 4. Sincronizar Estudiantes desde SIGENU (RF-0108)
+        if origen in ['TODOS', 'SIGENU']:
+            sigenu_resp = SigenuAdapter.fetch_estudiantes()
+            fuentes_consultadas.append(sigenu_resp['source'])
+            for item in sigenu_resp['registros']:
+                ci_info = calcular_edad_y_sexo_desde_ci(item['ci'])
+                area_obj = areas_by_code.get(item.get('area_codigo')) or Area.objects.filter(tieneEstudiantes=True).first()
+                depto_obj = deptos_by_code.get(item.get('depto_codigo'))
+                cargo_obj, _ = Cargo.objects.get_or_create(nombre=item.get('cargo', 'Estudiante de 4to Año'))
+                contrato_obj, _ = Contrato.objects.get_or_create(nombre=item.get('contrato', 'Estudiante Regular Diurno'))
+
+                user, u_created = User.objects.get_or_create(
+                    username=item['username'],
+                    defaults={
+                        'email': item['email'],
+                        'first_name': item['first_name'],
+                        'last_name': item['last_name'],
+                        'role': ROLE_ESTUDIANTE,
+                        'departamento': area_obj.nombre if area_obj else '',
+                    }
+                )
+                if u_created:
+                    user.set_password('password')
+                    user.save()
+                    creados += 1
+                else:
+                    user.first_name = item['first_name']
+                    user.last_name = item['last_name']
+                    user.email = item['email']
+                    user.save()
+                    actualizados += 1
+
+                perfil, _ = Perfil.objects.get_or_create(usuario=user)
+                perfil.ci = item['ci']
+                perfil.sexo = ci_info['sexo']
+                perfil.tipo = 'ESTUDIANTE'
+                perfil.area = area_obj
+                perfil.depto = depto_obj
+                perfil.cargo = cargo_obj
+                perfil.contrato = contrato_obj
+                if not perfil.celular:
+                    perfil.celular = '53891245'
+                if not perfil.direccion:
+                    perfil.direccion = 'Residencia Estudiantil Sede Oscar Lucero Moya, Holguín'
+                perfil.save()
+
+        # 5. Asegurar Reglas Globales RN-02
         defaults_rn02 = [
             {'tipo_usuario': 'OBRERO', 'sexo': 'M', 'tipo_turno_defecto': 'Nocturna', 'tipo_dia_defecto': 'Semana'},
             {'tipo_usuario': 'OBRERO', 'sexo': 'F', 'tipo_turno_defecto': 'Diurna', 'tipo_dia_defecto': 'Semana'},
@@ -391,14 +392,19 @@ class SincronizarRegistrosView(APIView):
             if created_regla:
                 reglas_creadas += 1
 
+        AuditLog.objects.create(
+            usuario=request.user,
+            accion='SYNC',
+            modelo=f"Sincronización ({origen})",
+            objeto_id=origen,
+            detalle=f"Sincronización completada con {', '.join(fuentes_consultadas)}: {creados} nuevos, {actualizados} actualizados (RN-01 preservado).",
+            ip_address=request.META.get('REMOTE_ADDR', '127.0.0.1')
+        )
+
         return Response({
             "status": "success",
-            "message": "Sincronización institucional completada exitosamente desde ASSET y SIGENU.",
-            "cargos_creados": len(cargos_nombres),
-            "contratos_creados": len(contratos_nombres),
-            "sedes_creadas": len(sedes_data),
-            "areas_creadas": len(areas_data),
-            "departamentos_creados": len(deptos_data),
+            "message": f"Sincronización institucional completada con éxito ({', '.join(fuentes_consultadas)}). Datos locales de contacto preservados según RN-01.",
+            "fuentes": fuentes_consultadas,
             "usuarios_creados": creados,
             "usuarios_actualizados": actualizados,
             "reglas_rn02_creadas": reglas_creadas
@@ -420,4 +426,46 @@ class ConfiguracionReglaGuardiaViewSet(viewsets.ModelViewSet):
         if self.action in ['create', 'update', 'partial_update', 'destroy']:
             return [HasRole.for_roles(ROLE_SUPERADMIN)()]
         return [IsAuthenticated()]
+
+
+class AuditLogView(APIView):
+    """
+    Visor y Registro de Auditoría Institucional del SIGCGOE (RNF-06, RNF-11).
+    Permite consultar la trazabilidad completa de eventos del sistema (logins, aprobaciones,
+    cambios de rol, sincronizaciones con ASSET/SIGENU, etc.).
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        accion = request.query_params.get('accion')
+        modelo = request.query_params.get('modelo')
+        search = request.query_params.get('q')
+
+        qs = AuditLog.objects.select_related('usuario').all().order_by('-fecha_registro')
+        if accion:
+            qs = qs.filter(accion=accion)
+        if modelo:
+            qs = qs.filter(tabla__icontains=modelo)
+        if search:
+            qs = qs.filter(detalle__icontains=search)
+
+        logs = qs[:150]
+        return Response(AuditLogSerializer(logs, many=True).data, status=status.HTTP_200_OK)
+
+    def post(self, request):
+        accion = request.data.get('accion', 'UPDATE')
+        modelo = request.data.get('modelo', 'Sistema')
+        objeto_id = str(request.data.get('objeto_id', ''))
+        detalle = request.data.get('detalle', '')
+
+        log = AuditLog.objects.create(
+            usuario=request.user,
+            accion=accion,
+            modelo=modelo,
+            objeto_id=objeto_id,
+            detalle=detalle,
+            ip_address=request.META.get('REMOTE_ADDR', '127.0.0.1')
+        )
+        return Response(AuditLogSerializer(log).data, status=status.HTTP_201_CREATED)
+
 

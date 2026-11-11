@@ -18,8 +18,6 @@ ALLOWED_HOSTS = env.list('ALLOWED_HOSTS', default=['localhost', '127.0.0.1', '[:
 
 # APLICACIONES INSTALADAS
 INSTALLED_APPS = [
-    # Django Channels (debe ir antes de staticfiles si se usa daphne)
-    'daphne',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -32,7 +30,6 @@ INSTALLED_APPS = [
     'rest_framework_simplejwt',
     'corsheaders',
     'drf_spectacular',
-    'channels',
     'storages',
     
     # Módulos del Sistema UHO
@@ -157,11 +154,11 @@ SIMPLE_JWT = {
     'AUTH_HEADER_TYPES': ('Bearer',),
 }
 
-# SPECTACULAR API DOCS
+# SPECTACULAR API DOCS (MOD-10, RF-1003)
 SPECTACULAR_SETTINGS = {
-    'TITLE': 'Sistema de Informatización UHO API',
-    'DESCRIPTION': 'Documentación del Sistema de Desarrollo para el Proceso de Informatización de la Universidad de Holguín (UHO)',
-    'VERSION': '1.2.0',
+    'TITLE': 'SIGCGOE — Sistema Integral para la Gestión y Control de la Guardia Obrera y Estudiantil (UHO)',
+    'DESCRIPTION': 'Documentación oficial interactiva de la API RESTful de interoperabilidad del SIGCGOE para la Universidad de Holguín (MOD-01 a MOD-10).',
+    'VERSION': '2.0.0',
     'SERVE_INCLUDE_SCHEMA': False,
 }
 

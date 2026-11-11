@@ -3,7 +3,7 @@ from rest_framework.routers import DefaultRouter
 from .views import (
     DashboardView, CargoViewSet, ContratoViewSet, SedeViewSet,
     AreaViewSet, DepartamentoViewSet, PerfilViewSet, SincronizarRegistrosView,
-    ConfiguracionReglaGuardiaViewSet
+    ConfiguracionReglaGuardiaViewSet, AuditLogView
 )
 
 router = DefaultRouter()
@@ -19,5 +19,6 @@ urlpatterns = [
     path('dashboard/', DashboardView.as_view(), name='dashboard'),
     path('sincronizar/', SincronizarRegistrosView.as_view(), name='sincronizar'),
     path('sincronizar-fuentes/', SincronizarRegistrosView.as_view(), name='sincronizar-fuentes'),
+    path('auditoria/', AuditLogView.as_view(), name='auditoria'),
     path('', include(router.urls)),
 ]
