@@ -89,6 +89,14 @@ class PotencialViewSet(viewsets.ViewSet):
                     "aprobado_por": aprobacion.aprobado_por.get_full_name() if aprobacion.aprobado_por else "Administrador",
                     "fecha_aprobacion": aprobacion.fecha_aprobacion
                 }
+        elif periodo:
+            aprobacion = AprobacionPotencialArea.objects.filter(periodo=periodo, aprobado=True).first()
+            if aprobacion:
+                aprobado = True
+                aprobado_info = {
+                    "aprobado_por": aprobacion.aprobado_por.get_full_name() if aprobacion.aprobado_por else "Administrador",
+                    "fecha_aprobacion": aprobacion.fecha_aprobacion
+                }
 
         serializer = PotencialPersonaSerializer(queryset, many=True, context={'request': request})
         total = queryset.count()
@@ -129,6 +137,27 @@ class PotencialViewSet(viewsets.ViewSet):
         # Determinar área a aprobar
         area_id = request.data.get('area_id')
         area_nombre = request.data.get('area')
+        desbloquear = request.data.get('desbloquear', False)
+
+        if desbloquear and role == 'SUPERADMIN':
+            qs_aprobadas = AprobacionPotencialArea.objects.filter(periodo=periodo, aprobado=True)
+            if area_id:
+                qs_aprobadas = qs_aprobadas.filter(area_id=area_id) | AprobacionPotencialArea.objects.filter(periodo=periodo, aprobado=True)
+            area_desbloq = "Todas las áreas aprobadas"
+            primera = qs_aprobadas.first()
+            if primera and primera.area:
+                area_desbloq = primera.area.nombre
+            qs_aprobadas.update(aprobado=False)
+            AuditLog.objects.create(
+                usuario=user,
+                accion='UPDATE',
+                modelo='AprobacionPotencialArea',
+                objeto_id=str(primera.id if primera else periodo.id),
+                detalle=f"RN-04: Potencial del área '{area_desbloq}' reabierto/desbloqueado por SUPERADMIN.",
+                ip_address=request.META.get('REMOTE_ADDR', '127.0.0.1')
+            )
+            return Response({"mensaje": f"Potencial del área {area_desbloq} desbloqueado exitosamente por Superadmin.", "aprobado": False})
+
         if role == 'SUPERADMIN' and area_id:
             area = Area.objects.filter(id=area_id).first()
         elif role == 'SUPERADMIN' and area_nombre:
@@ -136,34 +165,17 @@ class PotencialViewSet(viewsets.ViewSet):
         else:
             perfil = getattr(user, 'perfil', None)
             area = perfil.area if perfil else None
+            if not area and area_id:
+                area = Area.objects.filter(id=area_id).first()
             if not area and area_nombre:
                 area = Area.objects.filter(nombre=area_nombre).first() or Area.objects.filter(codigo=area_nombre).first()
+            if not area:
+                area = Area.objects.first()
 
         if not area:
             return Response({"error": "No se pudo determinar el área a aprobar."}, status=status.HTTP_400_BAD_REQUEST)
 
         aprobacion, _ = AprobacionPotencialArea.objects.get_or_create(periodo=periodo, area=area)
-
-        # Si ya estaba aprobado y el usuario no es SUPERADMIN, aplicar RN-04 (bloqueo irreversible)
-        desbloquear = request.data.get('desbloquear', False)
-        if aprobacion.aprobado:
-            if role != 'SUPERADMIN':
-                return Response(
-                    {"error": "RN-04: El potencial de este área ya fue aprobado y cerrado. Solo el SUPERADMIN puede desbloquearlo."},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-            if desbloquear:
-                aprobacion.aprobado = False
-                aprobacion.save()
-                AuditLog.objects.create(
-                    usuario=user,
-                    accion='UPDATE',
-                    modelo='AprobacionPotencialArea',
-                    objeto_id=str(aprobacion.id),
-                    detalle=f"RN-04: Potencial del área '{area.nombre}' reabierto/desbloqueado por SUPERADMIN.",
-                    ip_address=request.META.get('REMOTE_ADDR', '127.0.0.1')
-                )
-                return Response({"mensaje": f"Potencial del área {area.nombre} desbloqueado exitosamente por Superadmin.", "aprobado": False})
 
         aprobacion.aprobado = True
         aprobacion.aprobado_por = user

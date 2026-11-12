@@ -43,7 +43,9 @@ export const AuthProvider = ({ children }) => {
         const data = res.data;
         if (data.access) {
           localStorage.setItem('access_token', data.access);
+          localStorage.setItem('uho_access_token', data.access);
           localStorage.setItem('refresh_token', data.refresh || '');
+          localStorage.setItem('uho_refresh_token', data.refresh || '');
         }
         const sessionUser = {
           ...data,
@@ -82,7 +84,9 @@ export const AuthProvider = ({ children }) => {
       const data = res.data;
       if (data.access) {
         localStorage.setItem('access_token', data.access);
+        localStorage.setItem('uho_access_token', data.access);
         localStorage.setItem('refresh_token', data.refresh || '');
+        localStorage.setItem('uho_refresh_token', data.refresh || '');
       }
       const updatedUser = {
         ...data,
@@ -114,7 +118,9 @@ export const AuthProvider = ({ children }) => {
       const response = await api.post('/auth/login/', { username, password });
       const { access, refresh, ...userData } = response.data;
       localStorage.setItem('access_token', access);
+      localStorage.setItem('uho_access_token', access);
       localStorage.setItem('refresh_token', refresh);
+      localStorage.setItem('uho_refresh_token', refresh);
       const nextUser = {
         ...userData,
         role: normalizeRoleForUI(userData.role),
@@ -135,6 +141,8 @@ export const AuthProvider = ({ children }) => {
   const logout = () => {
     localStorage.removeItem('access_token');
     localStorage.removeItem('refresh_token');
+    localStorage.removeItem('uho_access_token');
+    localStorage.removeItem('uho_refresh_token');
     localStorage.removeItem('uho_session_user');
     setUser(null);
   };
